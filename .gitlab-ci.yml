@@ -1,0 +1,92 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+stages:
+  - build
+
+bitstream:
+  stage: build
+  image: ciciec:v2026.3
+  tags:
+    - ciciec
+
+  before_script:
+    - source /opt/Xilinx/Vivado/2019.2/settings64.sh
+    - export  PATH=/opt/loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0/bin/:$PATH
+    - git config --global --add safe.directory $(pwd)
+
+  script:
+    - pwd
+    - ls -alh
+    - echo "Preparing build env..."
+    - cp -r /opt/env/regional_env/ciciec2026_loongson_regional .
+    - cp -rfT rtl/ ciciec2026_loongson_regional/rtl
+    - cp -rfT sdk/ ciciec2026_loongson_regional/sdk
+    - make MATMUL_GROUP_NUM=5000 COPY_OUTPUT=0 -C ciciec2026_loongson_regional/sdk/software/examples/asm
+    - find rtl -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > rtl.sha256
+    - |
+      SHOULD_RUN_VIVADO=1
+      REF_NAME_ENCODED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["CI_COMMIT_REF_NAME"], safe=""))')"
+      export ARTIFACT_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${REF_NAME_ENCODED}/download?job=${CI_JOB_NAME}"
+      echo "Trying to reuse artifacts from the latest successful ${CI_JOB_NAME} job on ${CI_COMMIT_REF_NAME}..."
+      if python3 -c 'import os, shutil, urllib.request; req = urllib.request.Request(os.environ["ARTIFACT_URL"], headers={"JOB-TOKEN": os.environ["CI_JOB_TOKEN"]}); resp = urllib.request.urlopen(req); out = open("previous_artifacts.zip", "wb"); shutil.copyfileobj(resp, out); out.close(); resp.close()' &&
+         unzip -q previous_artifacts.zip -d previous_artifacts &&
+         test -f previous_artifacts/rtl.sha256 &&
+         cmp -s rtl.sha256 previous_artifacts/rtl.sha256; then
+        echo "rtl/ is unchanged. Reusing previous Vivado artifacts and keeping the current make output."
+        mkdir -p ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/impl_1
+        mkdir -p ciciec2026_loongson_regional/fpga/project
+        mkdir -p ciciec2026_loongson_regional/fpga
+        cp -af previous_artifacts/ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/. ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/ 2>/dev/null || true
+        cp -af previous_artifacts/ciciec2026_loongson_regional/fpga/project/dsp_utilization.rpt ciciec2026_loongson_regional/fpga/project/ 2>/dev/null || true
+        cp -af previous_artifacts/ciciec2026_loongson_regional/fpga/project/linter.log ciciec2026_loongson_regional/fpga/project/ 2>/dev/null || true
+        cp -af previous_artifacts/ciciec2026_loongson_regional/fpga/project/linter.args ciciec2026_loongson_regional/fpga/project/ 2>/dev/null || true
+        cp -af previous_artifacts/ciciec2026_loongson_regional/fpga/*.log ciciec2026_loongson_regional/fpga/ 2>/dev/null || true
+        cp -af previous_artifacts/ciciec2026_loongson_regional/fpga/*.jou ciciec2026_loongson_regional/fpga/ 2>/dev/null || true
+        if find ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/impl_1 -name '*.bit' -print -quit | grep -q .; then
+          SHOULD_RUN_VIVADO=0
+        else
+          echo "Previous artifacts did not contain a bitstream. Running Vivado."
+        fi
+      else
+        echo "No reusable artifacts found, or rtl/ changed. Running Vivado."
+      fi
+    - ls ciciec2026_loongson_regional/rtl
+    - ls ciciec2026_loongson_regional/rtl/ip/confreg
+    - |
+      if [ "${SHOULD_RUN_VIVADO}" = "1" ]; then
+        cd ciciec2026_loongson_regional/fpga
+        export PYTHONIOENCODING=utf-8
+        echo "Creating Vivado project..."
+        vivado -mode batch -source ./create_project.tcl
+        echo "HDL lint check..."
+        python3 run-linter.py project/Loongson_Soc.xpr
+        echo "Starting Vivado implementation..."
+        vivado -mode batch -source ./run_impl.tcl
+        echo "DSP utilization check..."
+        python3 check_dsp.py project/dsp_utilization.rpt
+        echo "Timing WNS check..."
+        python3 check_timing.py project/Loongson_Soc.runs/impl_1/timing_summary.rpt
+        echo "Generating bitstream..."
+        vivado -mode batch -source ./generate_bit.tcl
+      else
+        echo "Skipping Vivado because rtl/ matches the previous successful job."
+        cd ciciec2026_loongson_regional/fpga
+        echo "Timing WNS check..."
+        python3 check_timing.py project/Loongson_Soc.runs/impl_1/timing_summary.rpt
+      fi
+
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
+    when: always
+    paths:
+      - ciciec2026_loongson_regional/sdk/software/examples/asm/obj/user-sample.bin
+      - ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/impl_1/*.bit
+      - ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/impl_1/timing_summary.rpt
+      - ciciec2026_loongson_regional/fpga/project/Loongson_Soc.runs/*/runme.log
+      - ciciec2026_loongson_regional/fpga/project/dsp_utilization.rpt
+      - ciciec2026_loongson_regional/fpga/project/linter.log
+      - ciciec2026_loongson_regional/fpga/project/linter.args
+      - ciciec2026_loongson_regional/fpga/*.log
+      - ciciec2026_loongson_regional/fpga/*.jou
+      - rtl.sha256
