@@ -60,10 +60,6 @@ localparam STATUS_ERROR_BIT  = 2;
 localparam VERSION_VALUE     = 32'h4d54_4d31;  // "MTM1"
 
 integer i;
-integer row;
-integer col;
-integer k;
-integer result_idx;
 
 reg [31:0] a_regs [0:15];
 reg [31:0] b_regs [0:15];
@@ -78,15 +74,39 @@ reg [31:0] awaddr_latched;
 reg [4:0]  awid_latched;
 reg        aw_pending;
 
-reg [65:0] acc66;
-reg [63:0] mul64;
 reg [31:0] reg_rdata;
 reg [31:0] merged_wdata;
+reg [1:0]  calc_row;
+reg [1:0]  calc_col;
+reg [1:0]  calc_k;
+reg [5:0]  mul_bit;
+reg [65:0] sum_acc;
+reg [65:0] product_acc;
+reg [31:0] multiplicand_reg;
+reg [31:0] multiplier_reg;
 // Register window spans byte offsets 0x000..0x14c (C region reaches 0x14c),
 // so decode on the low 12 bits, not just [7:0]; the upper C addresses would
 // otherwise alias down into CTRL/STATUS/A.
 wire [11:0] ar_word_addr = s_araddr[11:0];
 wire [11:0] aw_word_addr = awaddr_latched[11:0];
+wire [3:0]  a_index_cur = {calc_row, 2'b00} + calc_k;
+wire [3:0]  b_index_cur = {calc_k, 2'b00} + calc_col;
+wire [65:0] shifted_multiplicand = {34'b0, multiplicand_reg} << mul_bit;
+wire [65:0] product_acc_next =
+    product_acc + (multiplier_reg[0] ? shifted_multiplicand : 66'b0);
+wire [65:0] sum_acc_next = sum_acc + product_acc_next;
+wire [1:0]  next_calc_row = (calc_col == 2'd3) ? (calc_row + 2'd1) : calc_row;
+wire [1:0]  next_calc_col = (calc_col == 2'd3) ? 2'd0 : (calc_col + 2'd1);
+
+function [5:0] c_word_index;
+    input [1:0] row_idx;
+    input [1:0] col_idx;
+    reg   [3:0] element_idx;
+    begin
+        element_idx = {row_idx, 2'b00} + col_idx;
+        c_word_index = {element_idx, 1'b0} + element_idx;
+    end
+endfunction
 
 function [31:0] apply_wstrb;
     input [31:0] current;
@@ -139,6 +159,14 @@ always @(posedge clk or negedge resetn) begin
         done           <= 1'b0;
         error          <= 1'b0;
         ctrl_shadow    <= 32'b0;
+        calc_row       <= 2'b0;
+        calc_col       <= 2'b0;
+        calc_k         <= 2'b0;
+        mul_bit        <= 6'b0;
+        sum_acc        <= 66'b0;
+        product_acc    <= 66'b0;
+        multiplicand_reg <= 32'b0;
+        multiplier_reg   <= 32'b0;
         for (i = 0; i < 16; i = i + 1) begin
             a_regs[i] <= 32'b0;
             b_regs[i] <= 32'b0;
@@ -186,6 +214,14 @@ always @(posedge clk or negedge resetn) begin
                     busy  <= 1'b0;
                     done  <= 1'b0;
                     error <= 1'b0;
+                    calc_row <= 2'b0;
+                    calc_col <= 2'b0;
+                    calc_k   <= 2'b0;
+                    mul_bit  <= 6'b0;
+                    sum_acc  <= 66'b0;
+                    product_acc <= 66'b0;
+                    multiplicand_reg <= 32'b0;
+                    multiplier_reg   <= 32'b0;
                     for (i = 0; i < 48; i = i + 1) begin
                         c_regs[i] <= 32'b0;
                     end
@@ -195,21 +231,14 @@ always @(posedge clk or negedge resetn) begin
                     end else begin
                         busy <= 1'b1;
                         done <= 1'b0;
-                        for (row = 0; row < 4; row = row + 1) begin
-                            for (col = 0; col < 4; col = col + 1) begin
-                                acc66 = 66'b0;
-                                for (k = 0; k < 4; k = k + 1) begin
-                                    mul64 = a_regs[row * 4 + k] * b_regs[k * 4 + col];
-                                    acc66 = acc66 + {2'b00, mul64};
-                                end
-                                result_idx = (row * 4 + col) * 3;
-                                c_regs[result_idx + 0] <= acc66[31:0];
-                                c_regs[result_idx + 1] <= acc66[63:32];
-                                c_regs[result_idx + 2] <= {30'b0, acc66[65:64]};
-                            end
-                        end
-                        busy <= 1'b0;
-                        done <= 1'b1;
+                        calc_row <= 2'b0;
+                        calc_col <= 2'b0;
+                        calc_k   <= 2'b0;
+                        mul_bit  <= 6'b0;
+                        sum_acc  <= 66'b0;
+                        product_acc <= 66'b0;
+                        multiplicand_reg <= a_regs[0];
+                        multiplier_reg   <= b_regs[0];
                     end
                 end
             end else if ((aw_word_addr >= A_BASE_ADDR) && (aw_word_addr < (A_BASE_ADDR + 8'h40))) begin
@@ -235,6 +264,41 @@ always @(posedge clk or negedge resetn) begin
 
             if ((s_arlen != 8'b0) || (s_arsize != 3'b010) || (s_arburst != 2'b01)) begin
                 error <= 1'b1;
+            end
+        end
+
+        if (busy) begin
+            if (mul_bit == 6'd31) begin
+                if (calc_k == 2'd3) begin
+                    c_regs[c_word_index(calc_row, calc_col) + 6'd0] <= sum_acc_next[31:0];
+                    c_regs[c_word_index(calc_row, calc_col) + 6'd1] <= sum_acc_next[63:32];
+                    c_regs[c_word_index(calc_row, calc_col) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
+
+                    if ((calc_row == 2'd3) && (calc_col == 2'd3)) begin
+                        busy <= 1'b0;
+                        done <= 1'b1;
+                    end else begin
+                        calc_row <= next_calc_row;
+                        calc_col <= next_calc_col;
+                        calc_k   <= 2'd0;
+                        mul_bit  <= 6'd0;
+                        sum_acc  <= 66'b0;
+                        product_acc <= 66'b0;
+                        multiplicand_reg <= a_regs[{next_calc_row, 2'b00}];
+                        multiplier_reg   <= b_regs[next_calc_col];
+                    end
+                end else begin
+                    calc_k   <= calc_k + 2'd1;
+                    mul_bit  <= 6'd0;
+                    sum_acc  <= sum_acc_next;
+                    product_acc <= 66'b0;
+                    multiplicand_reg <= a_regs[{calc_row, 2'b00} + calc_k + 2'd1];
+                    multiplier_reg   <= b_regs[{calc_k + 2'd1, 2'b00} + calc_col];
+                end
+            end else begin
+                mul_bit      <= mul_bit + 6'd1;
+                product_acc  <= product_acc_next;
+                multiplier_reg <= {1'b0, multiplier_reg[31:1]};
             end
         end
     end
