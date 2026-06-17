@@ -377,7 +377,7 @@ assign dma_m_awburst    = 2'b0;
 assign dma_m_awlock     = 1'b0;
 assign dma_m_awcache    = 4'b0;
 assign dma_m_awprot     = 3'b0;
-assign dma_m_awvalid    = 1'b1;
+assign dma_m_awvalid    = 1'b0;
 assign dma_m_wid        = 4'b0;
 assign dma_m_wdata      = 32'b0;
 assign dma_m_wstrb      = 4'b0;
@@ -421,6 +421,12 @@ wire [1 :0] dma_s_bresp  ;
 wire        dma_s_bvalid ;
 wire        dma_s_bready ;
 wire        dma_finish   ;
+// DMA is not implemented in this stage; tie off to avoid X-propagation into confreg interrupt logic.
+assign dma_finish = 1'b0;
+wire        fft_finish   ;
+// FFT/IFFT is not implemented in this stage; tie off to avoid X-propagation into confreg interrupt logic.
+assign fft_finish = 1'b0;
+wire        confreg_int  ;
 
 assign dma_s_arready    = 1'b1;
 assign dma_s_rid        = 5'b0;
@@ -472,17 +478,58 @@ wire [1 :0] axiOut_1_bresp  ;
 wire        axiOut_1_bvalid ;
 wire        axiOut_1_bready ;
 
-assign axiOut_1_arready = 1'b1;
-assign axiOut_1_rid    = 5'b0;
-assign axiOut_1_rdata  = 32'b0;
-assign axiOut_1_rresp  = 2'b0;
-assign axiOut_1_rlast  = 1'b0;
-assign axiOut_1_rvalid = 1'b0;
-assign axiOut_1_awready = 1'b1;
-assign axiOut_1_wready = 1'b1;
-assign axiOut_1_bid    = 5'b0;
-assign axiOut_1_bresp = 2'b0;
-assign axiOut_1_bvalid = 1'b0;
+// NOTE: axiOut_1_* is terminated by u_axiOut_1_err_slave below.
+
+// Default error slave for unimplemented AXI target (output #1).
+// Prevents bus deadlock if software accesses this region.
+axi_err_slave #(
+    .ID_WIDTH   (5),
+    .ADDR_WIDTH (32),
+    .DATA_WIDTH (32)
+) u_axiOut_1_err_slave (
+    .clk     (sys_clk),
+    .resetn  (sys_resetn),
+
+    .arvalid (axiOut_1_arvalid),
+    .arready (axiOut_1_arready),
+    .araddr  (axiOut_1_araddr),
+    .arid    (axiOut_1_arid),
+    .arlen   (axiOut_1_arlen),
+    .arsize  (axiOut_1_arsize),
+    .arburst (axiOut_1_arburst),
+    .arlock  (axiOut_1_arlock),
+    .arcache (axiOut_1_arcache),
+    .arprot  (axiOut_1_arprot),
+
+    .rvalid  (axiOut_1_rvalid),
+    .rready  (axiOut_1_rready),
+    .rdata   (axiOut_1_rdata),
+    .rid     (axiOut_1_rid),
+    .rresp   (axiOut_1_rresp),
+    .rlast   (axiOut_1_rlast),
+
+    .awvalid (axiOut_1_awvalid),
+    .awready (axiOut_1_awready),
+    .awaddr  (axiOut_1_awaddr),
+    .awid    (axiOut_1_awid),
+    .awlen   (axiOut_1_awlen),
+    .awsize  (axiOut_1_awsize),
+    .awburst (axiOut_1_awburst),
+    .awlock  (axiOut_1_awlock),
+    .awcache (axiOut_1_awcache),
+    .awprot  (axiOut_1_awprot),
+
+    .wvalid  (axiOut_1_wvalid),
+    .wready  (axiOut_1_wready),
+    .wdata   (axiOut_1_wdata),
+    .wstrb   (axiOut_1_wstrb),
+    .wlast   (axiOut_1_wlast),
+
+    .bvalid  (axiOut_1_bvalid),
+    .bready  (axiOut_1_bready),
+    .bid     (axiOut_1_bid),
+    .bresp   (axiOut_1_bresp)
+);
 
 
 //axi dvi
@@ -523,17 +570,55 @@ wire [1 :0] dvi_bresp  ;
 wire        dvi_bvalid ;
 wire        dvi_bready ;
 
-assign dvi_arready  = 1'b1;
-assign dvi_rid      = 5'b0;
-assign dvi_rdata    = 32'b0;
-assign dvi_rresp    = 2'b0;
-assign dvi_rlast    = 1'b0;
-assign dvi_rvalid   = 1'b0;
-assign dvi_awready  = 1'b1;
-assign dvi_wready   = 1'b1;
-assign dvi_bid      = 5'b0;
-assign dvi_bresp    = 2'b0;
-assign dvi_bvalid   = 1'b0;
+// DVI controller (AXI slave on axiOut_3 @ 0x1f10_0000)
+axi_dvi u_axi_dvi (
+    .s_awvalid      (dvi_awvalid),
+    .s_awready      (dvi_awready),
+    .s_awaddr       (dvi_awaddr),
+    .s_awid         (dvi_awid),
+    .s_awlen        (dvi_awlen),
+    .s_awsize       (dvi_awsize),
+    .s_awburst      (dvi_awburst),
+    .s_awlock       (dvi_awlock[0]),
+    .s_awcache      (dvi_awcache),
+    .s_awprot       (dvi_awprot),
+    .s_wvalid       (dvi_wvalid),
+    .s_wready       (dvi_wready),
+    .s_wdata        (dvi_wdata),
+    .s_wstrb        (dvi_wstrb),
+    .s_wlast        (dvi_wlast),
+    .s_bvalid       (dvi_bvalid),
+    .s_bready       (dvi_bready),
+    .s_bid          (dvi_bid),
+    .s_bresp        (dvi_bresp),
+    .s_arvalid      (dvi_arvalid),
+    .s_arready      (dvi_arready),
+    .s_araddr       (dvi_araddr),
+    .s_arid         (dvi_arid),
+    .s_arlen        (dvi_arlen),
+    .s_arsize       (dvi_arsize),
+    .s_arburst      (dvi_arburst),
+    .s_arlock       (dvi_arlock[0]),
+    .s_arcache      (dvi_arcache),
+    .s_arprot       (dvi_arprot),
+    .s_rvalid       (dvi_rvalid),
+    .s_rready       (dvi_rready),
+    .s_rdata        (dvi_rdata),
+    .s_rid          (dvi_rid),
+    .s_rresp        (dvi_rresp),
+    .s_rlast        (dvi_rlast),
+
+    .video_clk      (video_clk),
+    .hsync          (video_hsync),
+    .vsync          (video_vsync),
+    .data_enable    (video_de),
+    .video_red      (video_red),
+    .video_green    (video_green),
+    .video_blue     (video_blue),
+
+    .aclk           (sys_clk),
+    .aresetn        (sys_resetn)
+);
 
 //axi confreg
 wire [4 :0] confreg_arid   ;
@@ -573,6 +658,63 @@ wire [1 :0] confreg_bresp  ;
 wire        confreg_bvalid ;
 wire        confreg_bready ;
 
+// Confreg block (AXI slave on axiOut_4 @ 0x1f20_0000)
+confreg #(
+    .SIMULATION (SIMULATION)
+) u_confreg (
+    .aclk           (sys_clk),
+    .aresetn        (sys_resetn),
+
+    .cpu_clk        (cpu_clk),
+    .cpu_resetn     (cpu_resetn),
+
+    .s_awid         (confreg_awid),
+    .s_awaddr       (confreg_awaddr),
+    .s_awlen        (confreg_awlen),
+    .s_awsize       (confreg_awsize),
+    .s_awburst      (confreg_awburst),
+    .s_awlock       (confreg_awlock),
+    .s_awcache      (confreg_awcache),
+    .s_awprot       (confreg_awprot),
+    .s_awvalid      (confreg_awvalid),
+    .s_awready      (confreg_awready),
+    .s_wid          (5'b0),
+    .s_wdata        (confreg_wdata),
+    .s_wstrb        (confreg_wstrb),
+    .s_wlast        (confreg_wlast),
+    .s_wvalid       (confreg_wvalid),
+    .s_wready       (confreg_wready),
+    .s_bid          (confreg_bid),
+    .s_bresp        (confreg_bresp),
+    .s_bvalid       (confreg_bvalid),
+    .s_bready       (confreg_bready),
+    .s_arid         (confreg_arid),
+    .s_araddr       (confreg_araddr),
+    .s_arlen        (confreg_arlen),
+    .s_arsize       (confreg_arsize),
+    .s_arburst      (confreg_arburst),
+    .s_arlock       (confreg_arlock),
+    .s_arcache      (confreg_arcache),
+    .s_arprot       (confreg_arprot),
+    .s_arvalid      (confreg_arvalid),
+    .s_arready      (confreg_arready),
+    .s_rid          (confreg_rid),
+    .s_rdata        (confreg_rdata),
+    .s_rresp        (confreg_rresp),
+    .s_rlast        (confreg_rlast),
+    .s_rvalid       (confreg_rvalid),
+    .s_rready       (confreg_rready),
+
+    .led            (leds),
+    .dpy0           (dpy0),
+    .dpy1           (dpy1),
+    .switch         (dip_sw),
+    .touch_btn      (touch_btn),
+    .dma_finish     (dma_finish),
+    .fft_finish     (fft_finish),
+    .confreg_int    (confreg_int)
+);
+
 //slave 6 FFT/IFFT
 wire [4 :0] fft_arid   ;
 wire [31:0] fft_araddr ;
@@ -610,19 +752,56 @@ wire [4 :0] fft_bid    ;
 wire [1 :0] fft_bresp  ;
 wire        fft_bvalid ;
 wire        fft_bready ;
-wire        fft_finish ;
 
-assign fft_arready = 1'b1;
-assign fft_rid    = 5'b0;
-assign fft_rdata  = 32'b0;
-assign fft_rresp  = 2'b0;
-assign fft_rlast  = 1'b0;
-assign fft_rvalid = 1'b0;
-assign fft_awready = 1'b1;
-assign fft_wready = 1'b1;
-assign fft_bid    = 5'b0;
-assign fft_bresp = 2'b0;
-assign fft_bvalid = 1'b0;
+// Default error slave for unimplemented FFT/IFFT AXI target.
+axi_err_slave #(
+    .ID_WIDTH   (5),
+    .ADDR_WIDTH (32),
+    .DATA_WIDTH (32)
+) u_fft_err_slave (
+    .clk     (sys_clk),
+    .resetn  (sys_resetn),
+
+    .arvalid (fft_arvalid),
+    .arready (fft_arready),
+    .araddr  (fft_araddr),
+    .arid    (fft_arid),
+    .arlen   (fft_arlen),
+    .arsize  (fft_arsize),
+    .arburst (fft_arburst),
+    .arlock  (fft_arlock),
+    .arcache (fft_arcache),
+    .arprot  (fft_arprot),
+
+    .rvalid  (fft_rvalid),
+    .rready  (fft_rready),
+    .rdata   (fft_rdata),
+    .rid     (fft_rid),
+    .rresp   (fft_rresp),
+    .rlast   (fft_rlast),
+
+    .awvalid (fft_awvalid),
+    .awready (fft_awready),
+    .awaddr  (fft_awaddr),
+    .awid    (fft_awid),
+    .awlen   (fft_awlen),
+    .awsize  (fft_awsize),
+    .awburst (fft_awburst),
+    .awlock  (fft_awlock),
+    .awcache (fft_awcache),
+    .awprot  (fft_awprot),
+
+    .wvalid  (fft_wvalid),
+    .wready  (fft_wready),
+    .wdata   (fft_wdata),
+    .wstrb   (fft_wstrb),
+    .wlast   (fft_wlast),
+
+    .bvalid  (fft_bvalid),
+    .bready  (fft_bready),
+    .bid     (fft_bid),
+    .bresp   (fft_bresp)
+);
 
 //slave 7
 wire [4 :0] axiOut_7_arid   ;
@@ -662,19 +841,50 @@ wire [1 :0] axiOut_7_bresp  ;
 wire        axiOut_7_bvalid ;
 wire        axiOut_7_bready ;
 
-assign axiOut_7_arready = 1'b1;
-assign axiOut_7_rid    = 5'b0;
-assign axiOut_7_rdata  = 32'b0;
-assign axiOut_7_rresp  = 2'b0;
-assign axiOut_7_rlast  = 1'b0;
-assign axiOut_7_rvalid = 1'b0;
-assign axiOut_7_awready = 1'b1;
-assign axiOut_7_wready = 1'b1;
-assign axiOut_7_bid    = 5'b0;
-assign axiOut_7_bresp = 2'b0;
-assign axiOut_7_bvalid = 1'b0;
+matmul_axi_slave u_matmul_axi_slave (
+    .clk     (sys_clk),
+    .resetn  (sys_resetn),
 
-wire confreg_int;
+    .s_arvalid (axiOut_7_arvalid),
+    .s_arready (axiOut_7_arready),
+    .s_araddr  (axiOut_7_araddr),
+    .s_arid    (axiOut_7_arid),
+    .s_arlen   (axiOut_7_arlen),
+    .s_arsize  (axiOut_7_arsize),
+    .s_arburst (axiOut_7_arburst),
+    .s_arlock  (axiOut_7_arlock),
+    .s_arcache (axiOut_7_arcache),
+    .s_arprot  (axiOut_7_arprot),
+
+    .s_rvalid  (axiOut_7_rvalid),
+    .s_rready  (axiOut_7_rready),
+    .s_rdata   (axiOut_7_rdata),
+    .s_rid     (axiOut_7_rid),
+    .s_rresp   (axiOut_7_rresp),
+    .s_rlast   (axiOut_7_rlast),
+
+    .s_awvalid (axiOut_7_awvalid),
+    .s_awready (axiOut_7_awready),
+    .s_awaddr  (axiOut_7_awaddr),
+    .s_awid    (axiOut_7_awid),
+    .s_awlen   (axiOut_7_awlen),
+    .s_awsize  (axiOut_7_awsize),
+    .s_awburst (axiOut_7_awburst),
+    .s_awlock  (axiOut_7_awlock),
+    .s_awcache (axiOut_7_awcache),
+    .s_awprot  (axiOut_7_awprot),
+
+    .s_wvalid  (axiOut_7_wvalid),
+    .s_wready  (axiOut_7_wready),
+    .s_wdata   (axiOut_7_wdata),
+    .s_wstrb   (axiOut_7_wstrb),
+    .s_wlast   (axiOut_7_wlast),
+
+    .s_bvalid  (axiOut_7_bvalid),
+    .s_bready  (axiOut_7_bready),
+    .s_bid     (axiOut_7_bid),
+    .s_bresp   (axiOut_7_bresp)
+);
 
 AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
     .clk                     ( sys_clk             ),
@@ -899,7 +1109,7 @@ AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
     .axiOut_3_awlen          ( dvi_awlen     ),
     .axiOut_3_awsize         ( dvi_awsize    ),
     .axiOut_3_awburst        ( dvi_awburst   ),
-    .axiOut_3_awlock         ( dvi_awlock    ),
+    .axiOut_3_awlock         ( dvi_awlock[0]    ),
     .axiOut_3_awcache        ( dvi_awcache   ),
     .axiOut_3_awprot         ( dvi_awprot    ),
     //w
@@ -921,7 +1131,7 @@ AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
     .axiOut_3_arlen          ( dvi_arlen     ),
     .axiOut_3_arsize         ( dvi_arsize    ),
     .axiOut_3_arburst        ( dvi_arburst   ),
-    .axiOut_3_arlock         ( dvi_arlock    ),
+    .axiOut_3_arlock         ( dvi_arlock[0]    ),
     .axiOut_3_arcache        ( dvi_arcache   ),
     .axiOut_3_arprot         ( dvi_arprot    ),
     //r
@@ -1103,7 +1313,285 @@ AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
 
 );
 
-// add your code
+// Interrupt wiring (Confreg ext interrupt -> CPU intrpt[0])
+// NOTE: Confreg interrupt is generated in sys_clk domain; synchronize into cpu_clk domain.
+reg [1:0] ext_irq_sync;
+always @(posedge cpu_clk or negedge cpu_resetn) begin
+    if(!cpu_resetn) begin
+        ext_irq_sync <= 2'b0;
+    end
+    else begin
+        ext_irq_sync <= {ext_irq_sync[0], confreg_int};
+    end
+end
+wire ext_irq = ext_irq_sync[1];
+wire [7:0] cpu_intrpt = {7'b0, ext_irq};
+
+// CPU core instantiation
+core_top u_cpu (
+    .aclk               (cpu_clk),
+    .aresetn            (cpu_resetn),
+    .intrpt             (cpu_intrpt),
+    // AXI interface
+    .arid               (cpu_arid),
+    .araddr             (cpu_araddr),
+    .arlen              (cpu_arlen),
+    .arsize             (cpu_arsize),
+    .arburst            (cpu_arburst),
+    .arlock             (cpu_arlock),
+    .arcache            (cpu_arcache),
+    .arprot             (cpu_arprot),
+    .arvalid            (cpu_arvalid),
+    .arready            (cpu_arready),
+    .rid                (cpu_rid),
+    .rdata              (cpu_rdata),
+    .rresp              (cpu_rresp),
+    .rlast              (cpu_rlast),
+    .rvalid             (cpu_rvalid),
+    .rready             (cpu_rready),
+    .awid               (cpu_awid),
+    .awaddr             (cpu_awaddr),
+    .awlen              (cpu_awlen),
+    .awsize             (cpu_awsize),
+    .awburst            (cpu_awburst),
+    .awlock             (cpu_awlock),
+    .awcache            (cpu_awcache),
+    .awprot             (cpu_awprot),
+    .awvalid            (cpu_awvalid),
+    .awready            (cpu_awready),
+    .wid                (cpu_wid),
+    .wdata              (cpu_wdata),
+    .wstrb              (cpu_wstrb),
+    .wlast              (cpu_wlast),
+    .wvalid             (cpu_wvalid),
+    .wready             (cpu_wready),
+    .bid                (cpu_bid),
+    .bresp              (cpu_bresp),
+    .bvalid             (cpu_bvalid),
+    .bready             (cpu_bready),
+    // Debug interface
+    .break_point        (1'b0),
+    .infor_flag         (1'b0),
+    .reg_num            (5'b0),
+    .ws_valid           (),
+    .rf_rdata           (),
+    .debug0_wb_pc       (debug_wb_pc),
+    .debug0_wb_rf_wen   (debug_wb_rf_wen),
+    .debug0_wb_rf_wnum  (debug_wb_rf_wnum),
+    .debug0_wb_rf_wdata (debug_wb_rf_wdata),
+    .debug0_wb_inst     (debug_wb_inst)
+);
+
+// AXI CDC (Clock Domain Crossing) instantiation
+Axi_CDC u_Axi_CDC (
+    .axiInClk           (cpu_clk),
+    .axiInRstn          (cpu_resetn),
+    .axiOutClk          (sys_clk),
+    .axiOutRstn         (sys_resetn),
+    // Input AXI (from CPU)
+    .axiIn_awvalid      (cpu_awvalid),
+    .axiIn_awready      (cpu_awready),
+    .axiIn_awaddr       (cpu_awaddr),
+    .axiIn_awid         ({1'b0, cpu_awid}),
+    .axiIn_awlen        (cpu_awlen),
+    .axiIn_awsize       (cpu_awsize),
+    .axiIn_awburst      (cpu_awburst),
+    .axiIn_awlock       (cpu_awlock[0]),
+    .axiIn_awcache      (cpu_awcache),
+    .axiIn_awprot       (cpu_awprot),
+    .axiIn_wvalid       (cpu_wvalid),
+    .axiIn_wready       (cpu_wready),
+    .axiIn_wdata        (cpu_wdata),
+    .axiIn_wstrb        (cpu_wstrb),
+    .axiIn_wlast        (cpu_wlast),
+    .axiIn_bvalid       (cpu_bvalid),
+    .axiIn_bready       (cpu_bready),
+    .axiIn_bid          ({cpu_bid_4, cpu_bid}),
+    .axiIn_bresp        (cpu_bresp),
+    .axiIn_arvalid      (cpu_arvalid),
+    .axiIn_arready      (cpu_arready),
+    .axiIn_araddr       (cpu_araddr),
+    .axiIn_arid         ({1'b0, cpu_arid}),
+    .axiIn_arlen        (cpu_arlen),
+    .axiIn_arsize       (cpu_arsize),
+    .axiIn_arburst      (cpu_arburst),
+    .axiIn_arlock       (cpu_arlock[0]),
+    .axiIn_arcache      (cpu_arcache),
+    .axiIn_arprot       (cpu_arprot),
+    .axiIn_rvalid       (cpu_rvalid),
+    .axiIn_rready       (cpu_rready),
+    .axiIn_rdata        (cpu_rdata),
+    .axiIn_rid          ({cpu_rid_4, cpu_rid}),
+    .axiIn_rresp        (cpu_rresp),
+    .axiIn_rlast        (cpu_rlast),
+    // Output AXI (to system bus)
+    .axiOut_awvalid     (cpu_sync_awvalid),
+    .axiOut_awready     (cpu_sync_awready),
+    .axiOut_awaddr      (cpu_sync_awaddr),
+    .axiOut_awid        ({cpu_sync_awid_4, cpu_sync_awid}),
+    .axiOut_awlen       (cpu_sync_awlen),
+    .axiOut_awsize      (cpu_sync_awsize),
+    .axiOut_awburst     (cpu_sync_awburst),
+    .axiOut_awlock      (cpu_sync_awlock),
+    .axiOut_awcache     (cpu_sync_awcache),
+    .axiOut_awprot      (cpu_sync_awprot),
+    .axiOut_wvalid      (cpu_sync_wvalid),
+    .axiOut_wready      (cpu_sync_wready),
+    .axiOut_wdata       (cpu_sync_wdata),
+    .axiOut_wstrb       (cpu_sync_wstrb),
+    .axiOut_wlast       (cpu_sync_wlast),
+    .axiOut_bvalid      (cpu_sync_bvalid),
+    .axiOut_bready      (cpu_sync_bready),
+    // Crossbar master-side IDs are 4-bit; tie MSB to 0 for CDC's 5-bit ID ports.
+    .axiOut_bid         ({1'b0, cpu_sync_bid}),
+    .axiOut_bresp       (cpu_sync_bresp),
+    .axiOut_arvalid     (cpu_sync_arvalid),
+    .axiOut_arready     (cpu_sync_arready),
+    .axiOut_araddr      (cpu_sync_araddr),
+    .axiOut_arid        ({cpu_sync_arid_4, cpu_sync_arid}),
+    .axiOut_arlen       (cpu_sync_arlen),
+    .axiOut_arsize      (cpu_sync_arsize),
+    .axiOut_arburst     (cpu_sync_arburst),
+    .axiOut_arlock      (cpu_sync_arlock),
+    .axiOut_arcache     (cpu_sync_arcache),
+    .axiOut_arprot      (cpu_sync_arprot),
+    .axiOut_rvalid      (cpu_sync_rvalid),
+    .axiOut_rready      (cpu_sync_rready),
+    .axiOut_rdata       (cpu_sync_rdata),
+    .axiOut_rid         ({1'b0, cpu_sync_rid}),
+    .axiOut_rresp       (cpu_sync_rresp),
+    .axiOut_rlast       (cpu_sync_rlast)
+);
+
+// SRAM controller instantiation
+axi_wrap_ram_sp_external u_axi_ram (
+    .aclk               (sys_clk),
+    .aresetn            (sys_resetn),
+    // AXI interface
+    .axi_arid           (ram_arid),
+    .axi_araddr         (ram_araddr),
+    .axi_arlen          (ram_arlen),
+    .axi_arsize         (ram_arsize),
+    .axi_arburst        (ram_arburst),
+    .axi_arlock         (ram_arlock),
+    .axi_arcache        (ram_arcache),
+    .axi_arprot         (ram_arprot),
+    .axi_arvalid        (ram_arvalid),
+    .axi_arready        (ram_arready),
+    .axi_rid            (ram_rid),
+    .axi_rdata          (ram_rdata),
+    .axi_rresp          (ram_rresp),
+    .axi_rlast          (ram_rlast),
+    .axi_rvalid         (ram_rvalid),
+    .axi_rready         (ram_rready),
+    .axi_awid           (ram_awid),
+    .axi_awaddr         (ram_awaddr),
+    .axi_awlen          (ram_awlen),
+    .axi_awsize         (ram_awsize),
+    .axi_awburst        (ram_awburst),
+    .axi_awlock         (ram_awlock),
+    .axi_awcache        (ram_awcache),
+    .axi_awprot         (ram_awprot),
+    .axi_awvalid        (ram_awvalid),
+    .axi_awready        (ram_awready),
+    .axi_wdata          (ram_wdata),
+    .axi_wstrb          (ram_wstrb),
+    .axi_wlast          (ram_wlast),
+    .axi_wvalid         (ram_wvalid),
+    .axi_wready         (ram_wready),
+    .axi_bid            (ram_bid),
+    .axi_bresp          (ram_bresp),
+    .axi_bvalid         (ram_bvalid),
+    .axi_bready         (ram_bready),
+    // BaseRAM signals
+    .base_ram_data      (base_ram_data),
+    .base_ram_addr      (base_ram_addr),
+    .base_ram_be_n      (base_ram_be_n),
+    .base_ram_ce_n      (base_ram_ce_n),
+    .base_ram_oe_n      (base_ram_oe_n),
+    .base_ram_we_n      (base_ram_we_n),
+    // ExtRAM signals
+    .ext_ram_data       (ext_ram_data),
+    .ext_ram_addr       (ext_ram_addr),
+    .ext_ram_be_n       (ext_ram_be_n),
+    .ext_ram_ce_n       (ext_ram_ce_n),
+    .ext_ram_oe_n       (ext_ram_oe_n),
+    .ext_ram_we_n       (ext_ram_we_n)
+);
+
+// Dummy wires for UART DMA outputs (not used in stage 1)
+wire        uart_apb_ready_dma;
+wire [31:0] uart_apb_rdata_dma;
+wire        uart_dma_grant;
+wire        uart_dma_req_o;
+
+// UART controller instantiation
+axi_uart_controller u_axi_uart_controller (
+    .clk                (sys_clk),
+    .rst_n              (sys_resetn),
+    // AXI interface
+    .axi_s_awid         (uart_awid),
+    .axi_s_awaddr       (uart_awaddr),
+    .axi_s_awlen        (uart_awlen),
+    .axi_s_awsize       (uart_awsize),
+    .axi_s_awburst      (uart_awburst),
+    .axi_s_awlock       (uart_awlock),
+    .axi_s_awcache      (uart_awcache),
+    .axi_s_awprot       (uart_awprot),
+    .axi_s_awvalid      (uart_awvalid),
+    .axi_s_awready      (uart_awready),
+    .axi_s_wid          (uart_wid),
+    .axi_s_wdata        (uart_wdata),
+    .axi_s_wstrb        (uart_wstrb),
+    .axi_s_wlast        (uart_wlast),
+    .axi_s_wvalid       (uart_wvalid),
+    .axi_s_wready       (uart_wready),
+    .axi_s_bid          (uart_bid),
+    .axi_s_bresp        (uart_bresp),
+    .axi_s_bvalid       (uart_bvalid),
+    .axi_s_bready       (uart_bready),
+    .axi_s_arid         (uart_arid),
+    .axi_s_araddr       (uart_araddr),
+    .axi_s_arlen        (uart_arlen),
+    .axi_s_arsize       (uart_arsize),
+    .axi_s_arburst      (uart_arburst),
+    .axi_s_arlock       (uart_arlock),
+    .axi_s_arcache      (uart_arcache),
+    .axi_s_arprot       (uart_arprot),
+    .axi_s_arvalid      (uart_arvalid),
+    .axi_s_arready      (uart_arready),
+    .axi_s_rid          (uart_rid),
+    .axi_s_rdata        (uart_rdata),
+    .axi_s_rresp        (uart_rresp),
+    .axi_s_rlast        (uart_rlast),
+    .axi_s_rvalid       (uart_rvalid),
+    .axi_s_rready       (uart_rready),
+    // DMA interface (tie-off inputs, connect dummy outputs)
+    .apb_rw_dma         (1'b0),
+    .apb_psel_dma       (1'b0),
+    .apb_enab_dma       (1'b0),
+    .apb_addr_dma       (20'h0),
+    .apb_wdata_dma      (32'h0),
+    .apb_valid_dma      (1'b0),
+    .dma_ack_i          (1'b0),
+    .apb_rdata_dma      (uart_apb_rdata_dma),
+    .apb_ready_dma      (uart_apb_ready_dma),
+    .dma_grant          (uart_dma_grant),
+    .dma_req_o          (uart_dma_req_o),
+    // UART interface
+    .uart0_txd_i        (uart0_txd_i),
+    .uart0_txd_o        (uart0_txd_o),
+    .uart0_txd_oe       (uart0_txd_oe),
+    .uart0_rxd_i        (uart0_rxd_i),
+    .uart0_rxd_o        (uart0_rxd_o),
+    .uart0_rxd_oe       (uart0_rxd_oe),
+    .uart0_rts_o        (uart0_rts_o),
+    .uart0_dtr_o        (uart0_dtr_o),
+    .uart0_cts_i        (uart0_cts_i),
+    .uart0_dsr_i        (uart0_dsr_i),
+    .uart0_dcd_i        (uart0_dcd_i),
+    .uart0_ri_i         (uart0_ri_i),
+    .uart0_int          (uart0_int)
+);
 
 endmodule
-
