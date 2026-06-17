@@ -30,12 +30,15 @@ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 ------------------------------------------------------------------------------*/
+`ifndef CONFREG_ADDR_DEFS
+`define CONFREG_ADDR_DEFS
 `define CONFREG_INT_ADDR    16'hf000 //1f20_f000
 `define TIMER_ADDR          16'hf100 //1f20_f100
 `define DIGITAL_ADDR        16'hf200 //1f20_f200
 `define LED_ADDR            16'hf300 //1f20_f300
 `define SWITCH_ADDR         16'hf400 //1f20_f400
 `define SIMU_FLAG_ADDR      16'hf500 //1f20_f500 
+`endif
 
 module confreg #(
     parameter   SIMULATION=1'b0
@@ -350,7 +353,77 @@ end
 //---------------------------{simulation flag}end------------------------//
 
 //-------------------------------{int_ctrl}begin----------------------------//
-//add your code
+// confreg_int_en     0x1f20f000
+// confreg_int_edge   0x1f20f004
+// confreg_int_pol    0x1f20f008
+// confreg_int_clr    0x1f20f00c (write-1-to-clear, mainly for edge-triggered)
+// confreg_int_set    0x1f20f010 (write-1-to-set, mainly for edge-triggered)
+// confreg_int_state  0x1f20f014
+
+wire write_int_en    = w_enter & (buf_addr[15:0] == (`CONFREG_INT_ADDR + 16'h0));
+wire write_int_edge  = w_enter & (buf_addr[15:0] == (`CONFREG_INT_ADDR + 16'h4));
+wire write_int_pol   = w_enter & (buf_addr[15:0] == (`CONFREG_INT_ADDR + 16'h8));
+wire write_int_clr   = w_enter & (buf_addr[15:0] == (`CONFREG_INT_ADDR + 16'hc));
+wire write_int_set   = w_enter & (buf_addr[15:0] == (`CONFREG_INT_ADDR + 16'h10));
+
+always @(posedge aclk) begin
+    if(!aresetn) begin
+        confreg_int_en   <= 32'h0;
+        confreg_int_edge <= 32'h0;
+        confreg_int_pol  <= 32'h0;
+        confreg_int_clr  <= 32'h0;
+        confreg_int_set  <= 32'h0;
+    end
+    else begin
+        if(write_int_en)   confreg_int_en   <= s_wdata;
+        if(write_int_edge) confreg_int_edge <= s_wdata;
+        if(write_int_pol)  confreg_int_pol  <= s_wdata;
+        if(write_int_clr)  confreg_int_clr  <= s_wdata;
+        if(write_int_set)  confreg_int_set  <= s_wdata;
+    end
+end
+
+localparam integer INT_SRC_NUM = 7;
+wire [INT_SRC_NUM-1:0] int_src = {fft_finish, dma_finish, timer_int, touch_btn_data};
+
+reg [INT_SRC_NUM-1:0] int_src_d;
+always @(posedge aclk) begin
+    if(!aresetn) begin
+        int_src_d <= {INT_SRC_NUM{1'b0}};
+    end
+    else begin
+        int_src_d <= int_src;
+    end
+end
+
+wire [INT_SRC_NUM-1:0] int_edge_sel = confreg_int_edge[INT_SRC_NUM-1:0];
+wire [INT_SRC_NUM-1:0] int_pol_sel  = confreg_int_pol[INT_SRC_NUM-1:0];
+wire [INT_SRC_NUM-1:0] int_edge_sel_eff = write_int_edge ? s_wdata[INT_SRC_NUM-1:0] : int_edge_sel;
+
+wire [INT_SRC_NUM-1:0] level_state  = (int_src & int_pol_sel) | ((~int_src) & (~int_pol_sel));
+wire [INT_SRC_NUM-1:0] edge_pulse   = ((~int_src_d) & int_src & int_pol_sel) |
+                                      (int_src_d & (~int_src) & (~int_pol_sel));
+
+reg [INT_SRC_NUM-1:0] edge_state;
+reg [INT_SRC_NUM-1:0] edge_state_next;
+always @(posedge aclk) begin
+    if(!aresetn) begin
+        edge_state <= {INT_SRC_NUM{1'b0}};
+    end
+    else begin
+        edge_state_next = edge_state;
+        if(write_int_edge) edge_state_next = edge_state_next & s_wdata[INT_SRC_NUM-1:0];
+        if(write_int_clr)  edge_state_next = edge_state_next & (~s_wdata[INT_SRC_NUM-1:0]);
+        if(write_int_set)  edge_state_next = edge_state_next | s_wdata[INT_SRC_NUM-1:0];
+        edge_state_next = edge_state_next | (edge_pulse & int_edge_sel_eff);
+        edge_state <= edge_state_next;
+    end
+end
+
+wire [INT_SRC_NUM-1:0] int_state_bits = (edge_state & int_edge_sel) | (level_state & (~int_edge_sel));
+assign confreg_int_state = {{(32-INT_SRC_NUM){1'b0}}, int_state_bits};
+
+assign confreg_int = |(confreg_int_state & confreg_int_en);
 
 //--------------------------------{int_ctrl}end-----------------------------//
 
