@@ -1,1 +1,70 @@
+#include <stdio.h>
 
+#include "fb_cache.h"
+#include "led.h"
+#include "matmul.h"
+
+#define EXTRAM_BASE_ADDR   0x1c400000u
+#define GROUP_COUNT        10u
+#define AB_WORDS_PER_GROUP 32u
+#define C_WORDS_PER_GROUP  48u
+
+static volatile U32 *const extram_words = (volatile U32 *)EXTRAM_BASE_ADDR;
+
+static void fail(U32 code, U32 detail)
+{
+    setLedPin((code & 0xffffu) | 0x8000u);
+    printf("MATMUL_FAIL code=%u detail=0x%08x\r\n", code, detail);
+    while (1) {
+    }
+}
+
+int main(void)
+{
+    U32 group;
+    U32 word;
+    U32 src_base_word = 0u;
+    U32 dst_base_word = GROUP_COUNT * AB_WORDS_PER_GROUP;
+    U32 status;
+
+    setvbuf(stdout, 0, _IONBF, 0);
+    setLedPin(0x0001u);
+    printf("MATMUL_START\r\n");
+
+    matmul_soft_reset();
+
+    for (group = 0; group < GROUP_COUNT; ++group) {
+        U32 src_group_base = src_base_word + group * AB_WORDS_PER_GROUP;
+        U32 dst_group_base = dst_base_word + group * C_WORDS_PER_GROUP;
+
+        for (word = 0; word < 16u; ++word) {
+            matmul_load_a_word(word, extram_words[src_group_base + word]);
+            matmul_load_b_word(word, extram_words[src_group_base + 16u + word]);
+        }
+
+        matmul_start();
+        status = matmul_wait_done();
+        if ((status & MATMUL_STATUS_ERROR) != 0u) {
+            fail(1u, status);
+        }
+
+        for (word = 0; word < C_WORDS_PER_GROUP; ++word) {
+            extram_words[dst_group_base + word] = matmul_read_c_word(word);
+        }
+
+        setLedPin((U32)(1u << (group & 0xf)));
+    }
+
+    /* The C-result stores above land in the write-back D-cache (has_cache=1).
+     * Push the dirty lines for the result region out to ExtRAM so the
+     * testbench, which inspects ext_sram_sp.BRAM directly (bypassing the
+     * cache), actually sees the computed results. */
+    fb_cache_flush_range((U32)(extram_words + dst_base_word),
+                         GROUP_COUNT * C_WORDS_PER_GROUP * sizeof(U32));
+
+    printf("MATMUL_DONE\r\n");
+    setLedPin(0x00ffu);
+
+    while (1) {
+    }
+}
