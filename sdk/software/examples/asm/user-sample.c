@@ -5,9 +5,18 @@
 #include "matmul.h"
 
 #define EXTRAM_BASE_ADDR   0x1c400000u
-#define GROUP_COUNT        10u
 #define AB_WORDS_PER_GROUP 32u
 #define C_WORDS_PER_GROUP  48u
+
+#ifndef MATMUL_GROUP_NUM
+#define MATMUL_GROUP_NUM 10
+#endif
+
+#if MATMUL_GROUP_NUM <= 0
+#error "MATMUL_GROUP_NUM must be positive"
+#endif
+
+#define GROUP_COUNT ((U32)MATMUL_GROUP_NUM)
 
 static volatile U32 *const extram_words = (volatile U32 *)EXTRAM_BASE_ADDR;
 
