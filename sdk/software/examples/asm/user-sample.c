@@ -21,6 +21,22 @@
 static volatile U32 *const extram_src_words = (volatile U32 *)EXTRAM_CACHED_BASE_ADDR;
 static volatile U32 *const extram_dst_words = (volatile U32 *)EXTRAM_UNCACHED_BASE_ADDR;
 
+static void commit_result_region(U32 dst_base_word)
+{
+    volatile U32 tail_word;
+    U32 last_word_index = dst_base_word + GROUP_COUNT * C_WORDS_PER_GROUP - 1u;
+
+    /* Force all prior uncached stores toward ExtRAM before emitting the
+     * completion UART message that the testbench watches for. The readback
+     * gives us a concrete completion point on the same slave path. */
+    __asm__ volatile("" : : : "memory");
+    __dbar(0);
+    tail_word = extram_dst_words[last_word_index];
+    __dbar(0);
+    __asm__ volatile("" : : : "memory");
+    (void)tail_word;
+}
+
 static void fail(U32 code, U32 detail)
 {
     setLedPin((code & 0xffffu) | 0x8000u);
@@ -68,6 +84,7 @@ int main(void)
         setLedPin((U32)(1u << (group & 0xf)));
     }
 
+    commit_result_region(dst_base_word);
     printf("MATMUL_DONE\r\n");
     setLedPin(0x00ffu);
 
