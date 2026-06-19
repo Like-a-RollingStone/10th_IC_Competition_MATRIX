@@ -188,7 +188,6 @@ int main(void)
     }
 
   //  commit_result_region(dst_base_word);
-    delay_ms(1);
     crc32 = compute_result_crc32(dst_base_word);
     uart_puts_blocking("MATMUL_CRC32=");
     uart_put_hex8(crc32);
