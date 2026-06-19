@@ -86,6 +86,38 @@ static void uart_put_u32(U32 value)
     }
 }
 
+static U32 crc32_update_byte(U32 crc, U8 byte)
+{
+    U32 bit;
+
+    crc ^= (U32)byte;
+    for (bit = 0u; bit < 8u; ++bit) {
+        if ((crc & 1u) != 0u) {
+            crc = (crc >> 1) ^ 0xedb88320u;
+        } else {
+            crc >>= 1;
+        }
+    }
+
+    return crc;
+}
+
+static U32 compute_result_crc32(U32 dst_base_word)
+{
+    U32 crc = 0xffffffffu;
+    U32 word_index;
+
+    for (word_index = 0u; word_index < GROUP_COUNT * C_WORDS_PER_GROUP; ++word_index) {
+        U32 value = extram_dst_words[dst_base_word + word_index];
+        crc = crc32_update_byte(crc, (U8)(value & 0xffu));
+        crc = crc32_update_byte(crc, (U8)((value >> 8) & 0xffu));
+        crc = crc32_update_byte(crc, (U8)((value >> 16) & 0xffu));
+        crc = crc32_update_byte(crc, (U8)((value >> 24) & 0xffu));
+    }
+
+    return crc ^ 0xffffffffu;
+}
+
 static void commit_result_region(U32 dst_base_word)
 {
     volatile U32 tail_word;
@@ -120,6 +152,7 @@ int main(void)
     U32 word;
     U32 src_base_word = 0u;
     U32 dst_base_word = GROUP_COUNT * AB_WORDS_PER_GROUP;
+    U32 crc32;
     U32 status;
 
     setLedPin(0x0001u);
@@ -153,6 +186,10 @@ int main(void)
     }
 
     commit_result_region(dst_base_word);
+    crc32 = compute_result_crc32(dst_base_word);
+    uart_puts_blocking("MATMUL_CRC32=");
+    uart_put_hex8(crc32);
+    uart_puts_blocking("\r\n");
     uart_puts_blocking("MATMUL_DONE\r\n");
     setLedPin(0x00ffu);
 
