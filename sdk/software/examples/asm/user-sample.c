@@ -1,6 +1,7 @@
 #include "led.h"
 #include "matmul.h"
 
+
 #define EXTRAM_CACHED_BASE_ADDR   0x1c400000u
 #define EXTRAM_UNCACHED_BASE_ADDR 0xbc400000u
 #define AB_WORDS_PER_GROUP        32u
@@ -186,6 +187,7 @@ int main(void)
     }
 
   //  commit_result_region(dst_base_word);
+    delay(0.1);
     crc32 = compute_result_crc32(dst_base_word);
     uart_puts_blocking("MATMUL_CRC32=");
     uart_put_hex8(crc32);
