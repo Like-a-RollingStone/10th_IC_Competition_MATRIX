@@ -185,7 +185,7 @@ int main(void)
         setLedPin((U32)(1u << (group & 0xf)));
     }
 
-    commit_result_region(dst_base_word);
+  //  commit_result_region(dst_base_word);
     crc32 = compute_result_crc32(dst_base_word);
     uart_puts_blocking("MATMUL_CRC32=");
     uart_put_hex8(crc32);
