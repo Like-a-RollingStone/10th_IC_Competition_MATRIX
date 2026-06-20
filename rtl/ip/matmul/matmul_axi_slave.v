@@ -24,6 +24,42 @@ module matmul_axi_slave (
     output reg [4:0]   s_bid,
     output reg [1:0]   s_bresp,
 
+    output     [3:0]   m_arid,
+    output reg [31:0]  m_araddr,
+    output     [7:0]   m_arlen,
+    output     [2:0]   m_arsize,
+    output     [1:0]   m_arburst,
+    output             m_arlock,
+    output     [3:0]   m_arcache,
+    output     [2:0]   m_arprot,
+    output reg         m_arvalid,
+    input              m_arready,
+    input      [3:0]   m_rid,
+    input      [31:0]  m_rdata,
+    input      [1:0]   m_rresp,
+    input              m_rlast,
+    input              m_rvalid,
+    output             m_rready,
+    output     [3:0]   m_awid,
+    output reg [31:0]  m_awaddr,
+    output     [7:0]   m_awlen,
+    output     [2:0]   m_awsize,
+    output     [1:0]   m_awburst,
+    output             m_awlock,
+    output     [3:0]   m_awcache,
+    output     [2:0]   m_awprot,
+    output reg         m_awvalid,
+    input              m_awready,
+    output reg [31:0]  m_wdata,
+    output     [3:0]   m_wstrb,
+    output reg         m_wlast,
+    output reg         m_wvalid,
+    input              m_wready,
+    input      [3:0]   m_bid,
+    input      [1:0]   m_bresp,
+    input              m_bvalid,
+    output             m_bready,
+
     input              s_arvalid,
     output reg         s_arready,
     input      [31:0]  s_araddr,
@@ -49,6 +85,10 @@ localparam [11:0] VERSION_ADDR = 12'h008;
 localparam [11:0] A_BASE_ADDR  = 12'h010;
 localparam [11:0] B_BASE_ADDR  = 12'h050;
 localparam [11:0] C_BASE_ADDR  = 12'h090;
+localparam [11:0] SRC_BASE_ADDR   = 12'h150;
+localparam [11:0] DST_BASE_ADDR   = 12'h154;
+localparam [11:0] GROUP_COUNT_ADDR = 12'h158;
+localparam [11:0] CRC32_ADDR      = 12'h15c;
 
 localparam CTRL_START_BIT    = 0;
 localparam CTRL_SOFT_RST_BIT = 1;
@@ -58,6 +98,13 @@ localparam STATUS_DONE_BIT   = 1;
 localparam STATUS_ERROR_BIT  = 2;
 
 localparam VERSION_VALUE     = 32'h4d54_4d31;  // "MTM1"
+localparam DMA_IDLE          = 3'd0;
+localparam DMA_READ_AR       = 3'd1;
+localparam DMA_READ_R        = 3'd2;
+localparam DMA_COMPUTE       = 3'd3;
+localparam DMA_WRITE_AW      = 3'd4;
+localparam DMA_WRITE_W       = 3'd5;
+localparam DMA_WRITE_B       = 3'd6;
 
 integer i;
 
@@ -68,13 +115,25 @@ reg [31:0] c_regs [0:47];
 reg        busy;
 reg        done;
 reg        error;
+reg        compute_active;
+reg        dma_active;
 reg [31:0] ctrl_shadow;
+reg [31:0] src_base_reg;
+reg [31:0] dst_base_reg;
+reg [31:0] group_count_reg;
+reg [31:0] crc_acc;
+reg [31:0] crc_result_reg;
 
 reg [31:0] awaddr_latched;
 reg [4:0]  awid_latched;
 reg        aw_pending;
 
 reg [31:0] reg_rdata;
+reg [2:0]  dma_state;
+reg [31:0] dma_group;
+reg [5:0]  dma_read_word;
+reg [5:0]  dma_write_word;
+reg [31:0] dma_write_data;
 reg [1:0]  calc_row;
 reg [1:0]  calc_col;
 reg [1:0]  calc_k;
@@ -98,6 +157,29 @@ wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[2] ? (shifted_multiplicand << 2) : 66'b0)
     + (multiplier_reg[3] ? (shifted_multiplicand << 3) : 66'b0);
 wire [65:0] sum_acc_next = sum_acc + product_acc_next;
+wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_word, 2'b00};
+wire [31:0] dma_dst_addr = dst_base_reg + (dma_group << 7) + (dma_group << 6) + {24'b0, dma_write_word, 2'b00};
+wire        dma_last_group = (dma_group == (group_count_reg - 32'd1));
+wire        dma_last_write = (dma_write_word == 6'd47);
+wire [31:0] crc_next_word = crc32_update_word(crc_acc, dma_write_data);
+
+assign m_arid    = 4'b0;
+assign m_arlen   = 8'b0;
+assign m_arsize  = 3'b010;
+assign m_arburst = 2'b01;
+assign m_arlock  = 1'b0;
+assign m_arcache = 4'b0011;
+assign m_arprot  = 3'b000;
+assign m_rready  = 1'b1;
+assign m_awid    = 4'b0;
+assign m_awlen   = 8'b0;
+assign m_awsize  = 3'b010;
+assign m_awburst = 2'b01;
+assign m_awlock  = 1'b0;
+assign m_awcache = 4'b0011;
+assign m_awprot  = 3'b000;
+assign m_wstrb   = 4'b1111;
+assign m_bready  = 1'b1;
 
 function [5:0] c_word_index;
     input [1:0] row_idx;
@@ -140,6 +222,37 @@ function [31:0] apply_wstrb;
     end
 endfunction
 
+function [31:0] crc32_update_byte;
+    input [31:0] crc_in;
+    input [7:0]  data_in;
+    reg [31:0] crc;
+    integer bit_idx;
+    begin
+        crc = crc_in ^ {24'b0, data_in};
+        for (bit_idx = 0; bit_idx < 8; bit_idx = bit_idx + 1) begin
+            if (crc[0]) begin
+                crc = (crc >> 1) ^ 32'hedb8_8320;
+            end else begin
+                crc = crc >> 1;
+            end
+        end
+        crc32_update_byte = crc;
+    end
+endfunction
+
+function [31:0] crc32_update_word;
+    input [31:0] crc_in;
+    input [31:0] data_in;
+    reg [31:0] crc;
+    begin
+        crc = crc32_update_byte(crc_in, data_in[7:0]);
+        crc = crc32_update_byte(crc, data_in[15:8]);
+        crc = crc32_update_byte(crc, data_in[23:16]);
+        crc = crc32_update_byte(crc, data_in[31:24]);
+        crc32_update_word = crc;
+    end
+endfunction
+
 always @(*) begin
     reg_rdata = 32'b0;
 
@@ -155,6 +268,14 @@ always @(*) begin
         reg_rdata = b_regs[(ar_word_addr - B_BASE_ADDR) >> 2];
     end else if ((ar_word_addr >= C_BASE_ADDR) && (ar_word_addr < (C_BASE_ADDR + 12'h0c0))) begin
         reg_rdata = c_regs[(ar_word_addr - C_BASE_ADDR) >> 2];
+    end else if (ar_word_addr == SRC_BASE_ADDR) begin
+        reg_rdata = src_base_reg;
+    end else if (ar_word_addr == DST_BASE_ADDR) begin
+        reg_rdata = dst_base_reg;
+    end else if (ar_word_addr == GROUP_COUNT_ADDR) begin
+        reg_rdata = group_count_reg;
+    end else if (ar_word_addr == CRC32_ADDR) begin
+        reg_rdata = crc_result_reg;
     end
 end
 
@@ -165,6 +286,13 @@ always @(posedge clk or negedge resetn) begin
         s_bvalid  <= 1'b0;
         s_bid     <= 5'b0;
         s_bresp   <= 2'b0;
+        m_arvalid <= 1'b0;
+        m_araddr  <= 32'b0;
+        m_awvalid <= 1'b0;
+        m_awaddr  <= 32'b0;
+        m_wvalid  <= 1'b0;
+        m_wdata   <= 32'b0;
+        m_wlast   <= 1'b0;
         s_arready <= 1'b1;
         s_rvalid  <= 1'b0;
         s_rdata   <= 32'b0;
@@ -177,7 +305,19 @@ always @(posedge clk or negedge resetn) begin
         busy           <= 1'b0;
         done           <= 1'b0;
         error          <= 1'b0;
+        compute_active <= 1'b0;
+        dma_active     <= 1'b0;
         ctrl_shadow    <= 32'b0;
+        src_base_reg   <= 32'b0;
+        dst_base_reg   <= 32'b0;
+        group_count_reg <= 32'b0;
+        crc_acc        <= 32'hffff_ffff;
+        crc_result_reg <= 32'b0;
+        dma_state      <= DMA_IDLE;
+        dma_group      <= 32'b0;
+        dma_read_word  <= 6'b0;
+        dma_write_word <= 6'b0;
+        dma_write_data <= 32'b0;
         calc_row       <= 2'b0;
         calc_col       <= 2'b0;
         calc_k         <= 2'b0;
@@ -232,6 +372,19 @@ always @(posedge clk or negedge resetn) begin
                     busy  <= 1'b0;
                     done  <= 1'b0;
                     error <= 1'b0;
+                    compute_active <= 1'b0;
+                    dma_active <= 1'b0;
+                    dma_state <= DMA_IDLE;
+                    m_arvalid <= 1'b0;
+                    m_awvalid <= 1'b0;
+                    m_wvalid <= 1'b0;
+                    m_wlast <= 1'b0;
+                    dma_group <= 32'b0;
+                    dma_read_word <= 6'b0;
+                    dma_write_word <= 6'b0;
+                    dma_write_data <= 32'b0;
+                    crc_acc <= 32'hffff_ffff;
+                    crc_result_reg <= 32'b0;
                     calc_row <= 2'b0;
                     calc_col <= 2'b0;
                     calc_k   <= 2'b0;
@@ -249,14 +402,29 @@ always @(posedge clk or negedge resetn) begin
                     end else begin
                         busy <= 1'b1;
                         done <= 1'b0;
+                        error <= 1'b0;
                         calc_row <= 2'b0;
                         calc_col <= 2'b0;
                         calc_k   <= 2'b0;
                         mul_bit  <= 6'b0;
                         sum_acc  <= 66'b0;
                         product_acc <= 66'b0;
-                        multiplicand_reg <= a_regs[0];
-                        multiplier_reg   <= b_regs[0];
+                        if (group_count_reg != 32'b0) begin
+                            compute_active <= 1'b0;
+                            dma_active <= 1'b1;
+                            dma_state <= DMA_READ_AR;
+                            dma_group <= 32'b0;
+                            dma_read_word <= 6'b0;
+                            dma_write_word <= 6'b0;
+                            crc_acc <= 32'hffff_ffff;
+                            crc_result_reg <= 32'b0;
+                        end else begin
+                            compute_active <= 1'b1;
+                            dma_active <= 1'b0;
+                            dma_state <= DMA_IDLE;
+                            multiplicand_reg <= a_regs[0];
+                            multiplier_reg   <= b_regs[0];
+                        end
                     end
                 end
             end else if ((aw_word_addr >= A_BASE_ADDR) && (aw_word_addr < (A_BASE_ADDR + 12'h040))) begin
@@ -268,6 +436,14 @@ always @(posedge clk or negedge resetn) begin
             end else if ((aw_word_addr >= C_BASE_ADDR) && (aw_word_addr < (C_BASE_ADDR + 12'h0c0))) begin
                 c_regs[(aw_word_addr - C_BASE_ADDR) >> 2] <=
                     apply_wstrb(c_regs[(aw_word_addr - C_BASE_ADDR) >> 2], s_wdata, s_wstrb);
+            end else if (aw_word_addr == SRC_BASE_ADDR) begin
+                src_base_reg <= apply_wstrb(src_base_reg, s_wdata, s_wstrb);
+            end else if (aw_word_addr == DST_BASE_ADDR) begin
+                dst_base_reg <= apply_wstrb(dst_base_reg, s_wdata, s_wstrb);
+            end else if (aw_word_addr == GROUP_COUNT_ADDR) begin
+                group_count_reg <= apply_wstrb(group_count_reg, s_wdata, s_wstrb);
+            end else if (aw_word_addr == CRC32_ADDR) begin
+                crc_result_reg <= apply_wstrb(crc_result_reg, s_wdata, s_wstrb);
             end else begin
                 error <= 1'b1;
             end
@@ -285,7 +461,7 @@ always @(posedge clk or negedge resetn) begin
             end
         end
 
-        if (busy) begin
+        if (compute_active) begin
             if (mul_bit == 6'd28) begin
                 if (calc_k == 2'd3) begin
                     c_regs[c_word_index(calc_row, calc_col) + 6'd0] <= sum_acc_next[31:0];
@@ -293,8 +469,14 @@ always @(posedge clk or negedge resetn) begin
                     c_regs[c_word_index(calc_row, calc_col) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
 
                     if ((calc_row == 2'd3) && (calc_col == 2'd3)) begin
-                        busy <= 1'b0;
-                        done <= 1'b1;
+                        compute_active <= 1'b0;
+                        if (dma_active) begin
+                            dma_state <= DMA_WRITE_AW;
+                            dma_write_word <= 6'b0;
+                        end else begin
+                            busy <= 1'b0;
+                            done <= 1'b1;
+                        end
                     end else begin
                         calc_row <= next_calc_row;
                         calc_col <= next_calc_col;
@@ -318,6 +500,119 @@ always @(posedge clk or negedge resetn) begin
                 product_acc <= product_acc_next;
                 multiplier_reg <= {4'b0, multiplier_reg[31:4]};
             end
+        end
+
+        if (dma_active) begin
+            case (dma_state)
+                DMA_READ_AR: begin
+                    if (!m_arvalid) begin
+                        m_araddr <= dma_src_addr;
+                        m_arvalid <= 1'b1;
+                    end else if (m_arready) begin
+                        m_arvalid <= 1'b0;
+                        dma_state <= DMA_READ_R;
+                    end
+                end
+
+                DMA_READ_R: begin
+                    if (m_rvalid) begin
+                        if ((m_rresp != 2'b00) || !m_rlast) begin
+                            error <= 1'b1;
+                            busy <= 1'b0;
+                            done <= 1'b1;
+                            dma_active <= 1'b0;
+                            dma_state <= DMA_IDLE;
+                        end else begin
+                            if (dma_read_word < 6'd16) begin
+                                a_regs[dma_read_word[3:0]] <= m_rdata;
+                            end else begin
+                                b_regs[dma_read_word[3:0]] <= m_rdata;
+                            end
+
+                            if (dma_read_word == 6'd31) begin
+                                dma_state <= DMA_COMPUTE;
+                                compute_active <= 1'b1;
+                                calc_row <= 2'b0;
+                                calc_col <= 2'b0;
+                                calc_k   <= 2'b0;
+                                mul_bit  <= 6'b0;
+                                sum_acc  <= 66'b0;
+                                product_acc <= 66'b0;
+                                multiplicand_reg <= a_regs[0];
+                                multiplier_reg   <= b_regs[0];
+                            end else begin
+                                dma_read_word <= dma_read_word + 6'd1;
+                                dma_state <= DMA_READ_AR;
+                            end
+                        end
+                    end
+                end
+
+                DMA_COMPUTE: begin
+                    if (!compute_active) begin
+                        dma_state <= DMA_WRITE_AW;
+                        dma_write_word <= 6'b0;
+                    end
+                end
+
+                DMA_WRITE_AW: begin
+                    if (!m_awvalid) begin
+                        m_awaddr <= dma_dst_addr;
+                        m_awvalid <= 1'b1;
+                    end else if (m_awready) begin
+                        m_awvalid <= 1'b0;
+                        dma_state <= DMA_WRITE_W;
+                    end
+                end
+
+                DMA_WRITE_W: begin
+                    if (!m_wvalid) begin
+                        dma_write_data <= c_regs[dma_write_word];
+                        m_wdata <= c_regs[dma_write_word];
+                        m_wlast <= 1'b1;
+                        m_wvalid <= 1'b1;
+                    end else if (m_wready) begin
+                        m_wvalid <= 1'b0;
+                        m_wlast <= 1'b0;
+                        dma_state <= DMA_WRITE_B;
+                    end
+                end
+
+                DMA_WRITE_B: begin
+                    if (m_bvalid) begin
+                        if (m_bresp != 2'b00) begin
+                            error <= 1'b1;
+                            busy <= 1'b0;
+                            done <= 1'b1;
+                            dma_active <= 1'b0;
+                            dma_state <= DMA_IDLE;
+                        end else begin
+                            crc_acc <= crc_next_word;
+                            if (dma_last_write) begin
+                                if (dma_last_group) begin
+                                    crc_result_reg <= crc_next_word ^ 32'hffff_ffff;
+                                    busy <= 1'b0;
+                                    done <= 1'b1;
+                                    dma_active <= 1'b0;
+                                    dma_state <= DMA_IDLE;
+                                end else begin
+                                    dma_group <= dma_group + 32'd1;
+                                    dma_read_word <= 6'b0;
+                                    dma_write_word <= 6'b0;
+                                    dma_state <= DMA_READ_AR;
+                                end
+                            end else begin
+                                dma_write_word <= dma_write_word + 6'd1;
+                                dma_state <= DMA_WRITE_AW;
+                            end
+                        end
+                    end
+                end
+
+                default: begin
+                    dma_state <= DMA_IDLE;
+                end
+            endcase
         end
     end
 end
