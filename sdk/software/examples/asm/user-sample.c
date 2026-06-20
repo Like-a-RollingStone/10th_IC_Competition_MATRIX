@@ -15,6 +15,10 @@
 #define MATMUL_A_BASE_OFFSET      0x10u
 #define MATMUL_B_BASE_OFFSET      0x50u
 #define MATMUL_C_BASE_OFFSET      0x90u
+#define MATMUL_SRC_BASE_OFFSET    0x150u
+#define MATMUL_DST_BASE_OFFSET    0x154u
+#define MATMUL_GROUP_COUNT_OFFSET 0x158u
+#define MATMUL_CRC32_OFFSET       0x15cu
 
 #ifndef MATMUL_GROUP_NUM
 #define MATMUL_GROUP_NUM 50
@@ -37,6 +41,10 @@ static volatile U32 *const extram_dst_words = (volatile U32 *)EXTRAM_UNCACHED_BA
 #define MATMUL_C_WORD(index)      MATMUL_REG32(MATMUL_C_BASE_OFFSET + ((index) << 2))
 #define MATMUL_CTRL_DIRECT        MATMUL_REG32(MATMUL_CTRL_OFFSET)
 #define MATMUL_STATUS_DIRECT      MATMUL_REG32(MATMUL_STATUS_OFFSET)
+#define MATMUL_SRC_BASE_DIRECT    MATMUL_REG32(MATMUL_SRC_BASE_OFFSET)
+#define MATMUL_DST_BASE_DIRECT    MATMUL_REG32(MATMUL_DST_BASE_OFFSET)
+#define MATMUL_GROUP_COUNT_DIRECT MATMUL_REG32(MATMUL_GROUP_COUNT_OFFSET)
+#define MATMUL_CRC32_DIRECT       MATMUL_REG32(MATMUL_CRC32_OFFSET)
 
 static const U32 crc32_table[256] = {
     0x00000000u, 0x77073096u, 0xee0e612cu, 0x990951bau,
@@ -216,10 +224,7 @@ static void fail(U32 code, U32 detail)
 
 int main(void)
 {
-    U32 group;
-    U32 word;
-    U32 src_base_word = 0u;
-    U32 dst_base_word = GROUP_COUNT * AB_WORDS_PER_GROUP;
+    U32 dst_base_addr = EXTRAM_CACHED_BASE_ADDR + GROUP_COUNT * AB_WORDS_PER_GROUP * 4u;
     U32 crc32;
     U32 status;
 
@@ -231,40 +236,26 @@ int main(void)
     MATMUL_CTRL_DIRECT = 0u;
     __asm__ volatile("" : : : "memory");
 
-    for (group = 0; group < GROUP_COUNT; ++group) {
-        U32 src_group_base = src_base_word + group * AB_WORDS_PER_GROUP;
-        U32 dst_group_base = dst_base_word + group * C_WORDS_PER_GROUP;
+    MATMUL_SRC_BASE_DIRECT = EXTRAM_CACHED_BASE_ADDR;
+    MATMUL_DST_BASE_DIRECT = dst_base_addr;
+    MATMUL_GROUP_COUNT_DIRECT = GROUP_COUNT;
+    __asm__ volatile("" : : : "memory");
 
-        for (word = 0; word < 16u; ++word) {
-            MATMUL_A_WORD(word) = extram_src_words[src_group_base + word];
-            MATMUL_B_WORD(word) = extram_src_words[src_group_base + 16u + word];
-        }
+    MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
+    __asm__ volatile("" : : : "memory");
+    MATMUL_CTRL_DIRECT = 0u;
+    __asm__ volatile("" : : : "memory");
 
-        MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
-        __asm__ volatile("" : : : "memory");
-        MATMUL_CTRL_DIRECT = 0u;
-        __asm__ volatile("" : : : "memory");
+    do {
+        status = MATMUL_STATUS_DIRECT;
+    } while ((status & (MATMUL_STATUS_DONE | MATMUL_STATUS_ERROR)) == 0u);
 
-        do {
-            status = MATMUL_STATUS_DIRECT;
-        } while ((status & (MATMUL_STATUS_DONE | MATMUL_STATUS_ERROR)) == 0u);
-
-        if ((status & MATMUL_STATUS_ERROR) != 0u) {
-            fail(1u, status);
-        }
-
-        /* Keep source reads cached, but write results through the uncached
-         * DMW alias so each store reaches ExtRAM directly instead of relying
-         * on a write-back cache line flush. */
-        for (word = 0; word < C_WORDS_PER_GROUP; ++word) {
-            extram_dst_words[dst_group_base + word] = MATMUL_C_WORD(word);
-        }
-
-        setLedPin((U32)(1u << (group & 0xf)));
+    if ((status & MATMUL_STATUS_ERROR) != 0u) {
+        fail(1u, status);
     }
 
-  //  commit_result_region(dst_base_word);
-    crc32 = compute_result_crc32(dst_base_word);
+    setLedPin(0x007fu);
+    crc32 = MATMUL_CRC32_DIRECT;
     uart_puts_blocking("MATMUL_CRC32=");
     uart_put_hex8(crc32);
     uart_puts_blocking("\r\n");
