@@ -161,10 +161,11 @@ wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_wo
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_group << 7) + (dma_group << 6) + {24'b0, dma_write_word, 2'b00};
 wire        dma_last_group = (dma_group == (group_count_reg - 32'd1));
 wire        dma_last_write = (dma_write_word == 6'd47);
-wire [31:0] crc_next_word = crc32_update_word(crc_acc, dma_write_data);
+wire [31:0] dma_current_write_data = c_regs[dma_write_word];
+wire [31:0] crc_next_word = crc32_update_word(crc_acc, dma_current_write_data);
 
 assign m_arid    = 4'b0;
-assign m_arlen   = 8'b0;
+assign m_arlen   = 8'd31;
 assign m_arsize  = 3'b010;
 assign m_arburst = 2'b01;
 assign m_arlock  = 1'b0;
@@ -172,7 +173,7 @@ assign m_arcache = 4'b0011;
 assign m_arprot  = 3'b000;
 assign m_rready  = 1'b1;
 assign m_awid    = 4'b0;
-assign m_awlen   = 8'b0;
+assign m_awlen   = 8'd47;
 assign m_awsize  = 3'b010;
 assign m_awburst = 2'b01;
 assign m_awlock  = 1'b0;
@@ -516,7 +517,7 @@ always @(posedge clk or negedge resetn) begin
 
                 DMA_READ_R: begin
                     if (m_rvalid) begin
-                        if ((m_rresp != 2'b00) || !m_rlast) begin
+                        if ((m_rresp != 2'b00) || ((dma_read_word != 6'd31) && m_rlast) || ((dma_read_word == 6'd31) && !m_rlast)) begin
                             error <= 1'b1;
                             busy <= 1'b0;
                             done <= 1'b1;
@@ -542,7 +543,7 @@ always @(posedge clk or negedge resetn) begin
                                 multiplier_reg   <= b_regs[0];
                             end else begin
                                 dma_read_word <= dma_read_word + 6'd1;
-                                dma_state <= DMA_READ_AR;
+                                dma_state <= DMA_READ_R;
                             end
                         end
                     end
@@ -567,14 +568,22 @@ always @(posedge clk or negedge resetn) begin
 
                 DMA_WRITE_W: begin
                     if (!m_wvalid) begin
-                        dma_write_data <= c_regs[dma_write_word];
-                        m_wdata <= c_regs[dma_write_word];
-                        m_wlast <= 1'b1;
+                        dma_write_data <= dma_current_write_data;
+                        m_wdata <= dma_current_write_data;
+                        m_wlast <= dma_last_write;
                         m_wvalid <= 1'b1;
                     end else if (m_wready) begin
-                        m_wvalid <= 1'b0;
-                        m_wlast <= 1'b0;
-                        dma_state <= DMA_WRITE_B;
+                        crc_acc <= crc_next_word;
+                        if (dma_last_write) begin
+                            m_wvalid <= 1'b0;
+                            m_wlast <= 1'b0;
+                            dma_state <= DMA_WRITE_B;
+                        end else begin
+                            dma_write_word <= dma_write_word + 6'd1;
+                            dma_write_data <= c_regs[dma_write_word + 6'd1];
+                            m_wdata <= c_regs[dma_write_word + 6'd1];
+                            m_wlast <= (dma_write_word == 6'd46);
+                        end
                     end
                 end
 
@@ -587,23 +596,17 @@ always @(posedge clk or negedge resetn) begin
                             dma_active <= 1'b0;
                             dma_state <= DMA_IDLE;
                         end else begin
-                            crc_acc <= crc_next_word;
-                            if (dma_last_write) begin
-                                if (dma_last_group) begin
-                                    crc_result_reg <= crc_next_word ^ 32'hffff_ffff;
-                                    busy <= 1'b0;
-                                    done <= 1'b1;
-                                    dma_active <= 1'b0;
-                                    dma_state <= DMA_IDLE;
-                                end else begin
-                                    dma_group <= dma_group + 32'd1;
-                                    dma_read_word <= 6'b0;
-                                    dma_write_word <= 6'b0;
-                                    dma_state <= DMA_READ_AR;
-                                end
+                            if (dma_last_group) begin
+                                crc_result_reg <= crc_acc ^ 32'hffff_ffff;
+                                busy <= 1'b0;
+                                done <= 1'b1;
+                                dma_active <= 1'b0;
+                                dma_state <= DMA_IDLE;
                             end else begin
-                                dma_write_word <= dma_write_word + 6'd1;
-                                dma_state <= DMA_WRITE_AW;
+                                dma_group <= dma_group + 32'd1;
+                                dma_read_word <= 6'b0;
+                                dma_write_word <= 6'b0;
+                                dma_state <= DMA_READ_AR;
                             end
                         end
                     end
