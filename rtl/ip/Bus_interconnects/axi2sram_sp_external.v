@@ -104,6 +104,7 @@ module axi2sram_sp_external #(
     
     reg [AXI_ADDR_WIDTH-1:0] req_addr_d, req_addr_q;
     reg [7:0]                cnt_d, cnt_q;
+    reg [AXI_DATA_WIDTH-1:0] read_data_q;
 
     function automatic [AXI_ADDR_WIDTH-1:0] get_wrap_boundary;
         input [AXI_ADDR_WIDTH-1:0] unaligned_address;
@@ -161,6 +162,7 @@ module axi2sram_sp_external #(
         s_rresp   = 'h0;
         s_rlast   = 'h0;
         s_rid     = ax_req_q_id;
+        s_rdata   = read_data_q;
         // slave write data channel
         s_wready  = 1'b0;
         // write response channel
@@ -235,12 +237,9 @@ module axi2sram_sp_external #(
             end
 
             READ: begin
-                // keep request to memory high
-                req_o  = 1'b1;
-                addr_o = req_addr_q;
                 // send the response
                 s_rvalid = 1'b1;
-                s_rdata  = data_i;
+                s_rdata  = read_data_q;
                 s_rid    = ax_req_q_id;
                 s_rlast  = (cnt_q == ax_req_q_len + 1);
                 // check that the master is ready, the slave must not wait on this
@@ -251,7 +250,24 @@ module axi2sram_sp_external #(
                         // we already got everything
                     end
                     else begin
-                        state_d = READ_ADDR;
+                        // Request the next beat while the current registered beat is
+                        // accepted. The next data word is captured at the clock edge.
+                        req_o  = 1'b1;
+                        case (ax_req_q_burst)
+                            FIXED, INCR: addr_o = cons_addr;
+                            WRAP:  begin
+                                if (cons_addr == upper_wrap_boundary) begin
+                                    addr_o = wrap_boundary;
+                                end else if (cons_addr > upper_wrap_boundary) begin
+                                    addr_o = ax_req_q_addr + ((cnt_q - ax_req_q_len) << LOG_NR_BYTES);
+                                end else begin
+                                    addr_o = cons_addr;
+                                end
+                            end
+                        endcase
+                        cnt_d = cnt_q + 1;
+                        req_addr_d = addr_o;
+                        state_d = READ;
                     end
                 end
             end
@@ -357,6 +373,7 @@ module axi2sram_sp_external #(
             ax_req_q_size   <= 3'h0;
             req_addr_q      <= 'h0;
             cnt_q           <= 8'h0;
+            read_data_q     <= 'h0;
         end else begin
             state_q         <= state_d;
             ax_req_q_addr   <= ax_req_d_addr;
@@ -366,6 +383,9 @@ module axi2sram_sp_external #(
             ax_req_q_size   <= ax_req_d_size;
             req_addr_q      <= req_addr_d;
             cnt_q           <= cnt_d;
+            if (req_o && !we_o) begin
+                read_data_q <= data_i;
+            end
         end
     end
 
@@ -382,4 +402,3 @@ module axi2sram_sp_external #(
     // end
 
 endmodule
-
