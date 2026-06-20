@@ -146,15 +146,21 @@ reg [65:0] sum_acc1;
 reg [65:0] product_acc1;
 reg [31:0] multiplicand_reg1;
 reg [31:0] multiplier_reg1;
+reg [65:0] sum_acc2;
+reg [65:0] product_acc2;
+reg [31:0] multiplicand_reg2;
+reg [31:0] multiplier_reg2;
+reg [65:0] sum_acc3;
+reg [65:0] product_acc3;
+reg [31:0] multiplicand_reg3;
+reg [31:0] multiplier_reg3;
 // Register window spans byte offsets 0x000..0x14c (C region reaches 0x14c),
 // so decode on the low 12 bits, not just [7:0]; the upper C addresses would
 // otherwise alias down into CTRL/STATUS/A.
 wire [11:0] ar_word_addr = s_araddr[11:0];
 wire [11:0] aw_word_addr = awaddr_latched[11:0];
 wire [31:0] ctrl_wdata = apply_wstrb(ctrl_shadow, s_wdata, s_wstrb);
-wire [1:0]  calc_col1 = calc_col + 2'd1;
-wire [1:0]  next_calc_row = (calc_col == 2'd2) ? (calc_row + 2'd1) : calc_row;
-wire [1:0]  next_calc_col = (calc_col == 2'd2) ? 2'd0 : 2'd2;
+wire [1:0]  next_calc_row = calc_row + 2'd1;
 wire [65:0] shifted_multiplicand = {34'b0, multiplicand_reg} << mul_bit;
 wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[0] ? shifted_multiplicand : 66'b0)
@@ -177,6 +183,28 @@ wire [65:0] product_acc_next1 = product_acc1
     + (multiplier_reg1[6] ? (shifted_multiplicand1 << 6) : 66'b0)
     + (multiplier_reg1[7] ? (shifted_multiplicand1 << 7) : 66'b0);
 wire [65:0] sum_acc_next1 = sum_acc1 + product_acc_next1;
+wire [65:0] shifted_multiplicand2 = {34'b0, multiplicand_reg2} << mul_bit;
+wire [65:0] product_acc_next2 = product_acc2
+    + (multiplier_reg2[0] ? shifted_multiplicand2 : 66'b0)
+    + (multiplier_reg2[1] ? (shifted_multiplicand2 << 1) : 66'b0)
+    + (multiplier_reg2[2] ? (shifted_multiplicand2 << 2) : 66'b0)
+    + (multiplier_reg2[3] ? (shifted_multiplicand2 << 3) : 66'b0)
+    + (multiplier_reg2[4] ? (shifted_multiplicand2 << 4) : 66'b0)
+    + (multiplier_reg2[5] ? (shifted_multiplicand2 << 5) : 66'b0)
+    + (multiplier_reg2[6] ? (shifted_multiplicand2 << 6) : 66'b0)
+    + (multiplier_reg2[7] ? (shifted_multiplicand2 << 7) : 66'b0);
+wire [65:0] sum_acc_next2 = sum_acc2 + product_acc_next2;
+wire [65:0] shifted_multiplicand3 = {34'b0, multiplicand_reg3} << mul_bit;
+wire [65:0] product_acc_next3 = product_acc3
+    + (multiplier_reg3[0] ? shifted_multiplicand3 : 66'b0)
+    + (multiplier_reg3[1] ? (shifted_multiplicand3 << 1) : 66'b0)
+    + (multiplier_reg3[2] ? (shifted_multiplicand3 << 2) : 66'b0)
+    + (multiplier_reg3[3] ? (shifted_multiplicand3 << 3) : 66'b0)
+    + (multiplier_reg3[4] ? (shifted_multiplicand3 << 4) : 66'b0)
+    + (multiplier_reg3[5] ? (shifted_multiplicand3 << 5) : 66'b0)
+    + (multiplier_reg3[6] ? (shifted_multiplicand3 << 6) : 66'b0)
+    + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0);
+wire [65:0] sum_acc_next3 = sum_acc3 + product_acc_next3;
 wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_word, 2'b00};
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_group << 7) + (dma_group << 6) + {24'b0, dma_write_word, 2'b00};
 wire        dma_last_group = (dma_group == (group_count_reg - 32'd1));
@@ -351,6 +379,14 @@ always @(posedge clk or negedge resetn) begin
         product_acc1   <= 66'b0;
         multiplicand_reg1 <= 32'b0;
         multiplier_reg1   <= 32'b0;
+        sum_acc2       <= 66'b0;
+        product_acc2   <= 66'b0;
+        multiplicand_reg2 <= 32'b0;
+        multiplier_reg2   <= 32'b0;
+        sum_acc3       <= 66'b0;
+        product_acc3   <= 66'b0;
+        multiplicand_reg3 <= 32'b0;
+        multiplier_reg3   <= 32'b0;
         for (i = 0; i < 16; i = i + 1) begin
             a_regs[i] <= 32'b0;
             b_regs[i] <= 32'b0;
@@ -422,6 +458,14 @@ always @(posedge clk or negedge resetn) begin
                     product_acc1 <= 66'b0;
                     multiplicand_reg1 <= 32'b0;
                     multiplier_reg1   <= 32'b0;
+                    sum_acc2 <= 66'b0;
+                    product_acc2 <= 66'b0;
+                    multiplicand_reg2 <= 32'b0;
+                    multiplier_reg2   <= 32'b0;
+                    sum_acc3 <= 66'b0;
+                    product_acc3 <= 66'b0;
+                    multiplicand_reg3 <= 32'b0;
+                    multiplier_reg3   <= 32'b0;
                     for (i = 0; i < 48; i = i + 1) begin
                         c_regs[i] <= 32'b0;
                     end
@@ -440,6 +484,10 @@ always @(posedge clk or negedge resetn) begin
                         product_acc <= 66'b0;
                         sum_acc1  <= 66'b0;
                         product_acc1 <= 66'b0;
+                        sum_acc2  <= 66'b0;
+                        product_acc2 <= 66'b0;
+                        sum_acc3  <= 66'b0;
+                        product_acc3 <= 66'b0;
                         if (group_count_reg != 32'b0) begin
                             compute_active <= 1'b0;
                             dma_active <= 1'b1;
@@ -457,6 +505,10 @@ always @(posedge clk or negedge resetn) begin
                             multiplier_reg   <= b_regs[0];
                             multiplicand_reg1 <= a_regs[0];
                             multiplier_reg1   <= b_regs[1];
+                            multiplicand_reg2 <= a_regs[0];
+                            multiplier_reg2   <= b_regs[2];
+                            multiplicand_reg3 <= a_regs[0];
+                            multiplier_reg3   <= b_regs[3];
                         end
                     end
                 end
@@ -497,14 +549,20 @@ always @(posedge clk or negedge resetn) begin
         if (compute_active) begin
             if (mul_bit == 6'd24) begin
                 if (calc_k == 2'd3) begin
-                    c_regs[c_word_index(calc_row, calc_col) + 6'd0] <= sum_acc_next[31:0];
-                    c_regs[c_word_index(calc_row, calc_col) + 6'd1] <= sum_acc_next[63:32];
-                    c_regs[c_word_index(calc_row, calc_col) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
-                    c_regs[c_word_index(calc_row, calc_col1) + 6'd0] <= sum_acc_next1[31:0];
-                    c_regs[c_word_index(calc_row, calc_col1) + 6'd1] <= sum_acc_next1[63:32];
-                    c_regs[c_word_index(calc_row, calc_col1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
+                    c_regs[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_next[31:0];
+                    c_regs[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_next[63:32];
+                    c_regs[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
+                    c_regs[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_next1[31:0];
+                    c_regs[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_next1[63:32];
+                    c_regs[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
+                    c_regs[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_next2[31:0];
+                    c_regs[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_next2[63:32];
+                    c_regs[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_next2[65:64]};
+                    c_regs[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_next3[31:0];
+                    c_regs[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_next3[63:32];
+                    c_regs[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_next3[65:64]};
 
-                    if ((calc_row == 2'd3) && (calc_col == 2'd2)) begin
+                    if (calc_row == 2'd3) begin
                         compute_active <= 1'b0;
                         if (dma_active) begin
                             dma_state <= DMA_WRITE_AW;
@@ -515,17 +573,25 @@ always @(posedge clk or negedge resetn) begin
                         end
                     end else begin
                         calc_row <= next_calc_row;
-                        calc_col <= next_calc_col;
+                        calc_col <= 2'd0;
                         calc_k   <= 2'd0;
                         mul_bit  <= 6'd0;
                         sum_acc  <= 66'b0;
                         product_acc <= 66'b0;
                         sum_acc1  <= 66'b0;
                         product_acc1 <= 66'b0;
+                        sum_acc2  <= 66'b0;
+                        product_acc2 <= 66'b0;
+                        sum_acc3  <= 66'b0;
+                        product_acc3 <= 66'b0;
                         multiplicand_reg <= a_regs[a_word_index(next_calc_row, 2'd0)];
-                        multiplier_reg   <= b_regs[b_word_index(2'd0, next_calc_col)];
+                        multiplier_reg   <= b_regs[b_word_index(2'd0, 2'd0)];
                         multiplicand_reg1 <= a_regs[a_word_index(next_calc_row, 2'd0)];
-                        multiplier_reg1   <= b_regs[b_word_index(2'd0, next_calc_col + 2'd1)];
+                        multiplier_reg1   <= b_regs[b_word_index(2'd0, 2'd1)];
+                        multiplicand_reg2 <= a_regs[a_word_index(next_calc_row, 2'd0)];
+                        multiplier_reg2   <= b_regs[b_word_index(2'd0, 2'd2)];
+                        multiplicand_reg3 <= a_regs[a_word_index(next_calc_row, 2'd0)];
+                        multiplier_reg3   <= b_regs[b_word_index(2'd0, 2'd3)];
                     end
                 end else begin
                     calc_k   <= calc_k + 2'd1;
@@ -534,10 +600,18 @@ always @(posedge clk or negedge resetn) begin
                     product_acc <= 66'b0;
                     sum_acc1 <= sum_acc_next1;
                     product_acc1 <= 66'b0;
+                    sum_acc2 <= sum_acc_next2;
+                    product_acc2 <= 66'b0;
+                    sum_acc3 <= sum_acc_next3;
+                    product_acc3 <= 66'b0;
                     multiplicand_reg <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
-                    multiplier_reg   <= b_regs[b_word_index(calc_k + 2'd1, calc_col)];
+                    multiplier_reg   <= b_regs[b_word_index(calc_k + 2'd1, 2'd0)];
                     multiplicand_reg1 <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
-                    multiplier_reg1   <= b_regs[b_word_index(calc_k + 2'd1, calc_col1)];
+                    multiplier_reg1   <= b_regs[b_word_index(calc_k + 2'd1, 2'd1)];
+                    multiplicand_reg2 <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
+                    multiplier_reg2   <= b_regs[b_word_index(calc_k + 2'd1, 2'd2)];
+                    multiplicand_reg3 <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
+                    multiplier_reg3   <= b_regs[b_word_index(calc_k + 2'd1, 2'd3)];
                 end
             end else begin
                 mul_bit <= mul_bit + 6'd8;
@@ -545,6 +619,10 @@ always @(posedge clk or negedge resetn) begin
                 multiplier_reg <= {8'b0, multiplier_reg[31:8]};
                 product_acc1 <= product_acc_next1;
                 multiplier_reg1 <= {8'b0, multiplier_reg1[31:8]};
+                product_acc2 <= product_acc_next2;
+                multiplier_reg2 <= {8'b0, multiplier_reg2[31:8]};
+                product_acc3 <= product_acc_next3;
+                multiplier_reg3 <= {8'b0, multiplier_reg3[31:8]};
             end
         end
 
@@ -586,10 +664,18 @@ always @(posedge clk or negedge resetn) begin
                                 product_acc <= 66'b0;
                                 sum_acc1 <= 66'b0;
                                 product_acc1 <= 66'b0;
+                                sum_acc2 <= 66'b0;
+                                product_acc2 <= 66'b0;
+                                sum_acc3 <= 66'b0;
+                                product_acc3 <= 66'b0;
                                 multiplicand_reg <= a_regs[0];
                                 multiplier_reg   <= b_regs[0];
                                 multiplicand_reg1 <= a_regs[0];
                                 multiplier_reg1   <= b_regs[1];
+                                multiplicand_reg2 <= a_regs[0];
+                                multiplier_reg2   <= b_regs[2];
+                                multiplicand_reg3 <= a_regs[0];
+                                multiplier_reg3   <= b_regs[3];
                             end else begin
                                 dma_read_word <= dma_read_word + 6'd1;
                                 dma_state <= DMA_READ_R;
