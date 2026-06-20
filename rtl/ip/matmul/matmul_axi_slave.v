@@ -160,6 +160,7 @@ reg [1:0]  calc_row;
 reg [1:0]  calc_col;
 reg [1:0]  calc_k;
 reg [5:0]  mul_bit;
+reg        mul_finish;
 reg [65:0] sum_acc;
 reg [65:0] product_acc;
 reg [31:0] multiplicand_reg;
@@ -210,7 +211,7 @@ wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[5] ? (shifted_multiplicand << 5) : 66'b0)
     + (multiplier_reg[6] ? (shifted_multiplicand << 6) : 66'b0)
     + (multiplier_reg[7] ? (shifted_multiplicand << 7) : 66'b0);
-wire [65:0] sum_acc_next = sum_acc + product_acc_next;
+wire [65:0] sum_acc_finish = sum_acc + product_acc;
 wire [65:0] shifted_multiplicand1 = {34'b0, multiplicand_reg1} << mul_bit;
 wire [65:0] product_acc_next1 = product_acc1
     + (multiplier_reg1[0] ? shifted_multiplicand1 : 66'b0)
@@ -221,7 +222,7 @@ wire [65:0] product_acc_next1 = product_acc1
     + (multiplier_reg1[5] ? (shifted_multiplicand1 << 5) : 66'b0)
     + (multiplier_reg1[6] ? (shifted_multiplicand1 << 6) : 66'b0)
     + (multiplier_reg1[7] ? (shifted_multiplicand1 << 7) : 66'b0);
-wire [65:0] sum_acc_next1 = sum_acc1 + product_acc_next1;
+wire [65:0] sum_acc_finish1 = sum_acc1 + product_acc1;
 wire [65:0] shifted_multiplicand2 = {34'b0, multiplicand_reg2} << mul_bit;
 wire [65:0] product_acc_next2 = product_acc2
     + (multiplier_reg2[0] ? shifted_multiplicand2 : 66'b0)
@@ -232,7 +233,7 @@ wire [65:0] product_acc_next2 = product_acc2
     + (multiplier_reg2[5] ? (shifted_multiplicand2 << 5) : 66'b0)
     + (multiplier_reg2[6] ? (shifted_multiplicand2 << 6) : 66'b0)
     + (multiplier_reg2[7] ? (shifted_multiplicand2 << 7) : 66'b0);
-wire [65:0] sum_acc_next2 = sum_acc2 + product_acc_next2;
+wire [65:0] sum_acc_finish2 = sum_acc2 + product_acc2;
 wire [65:0] shifted_multiplicand3 = {34'b0, multiplicand_reg3} << mul_bit;
 wire [65:0] product_acc_next3 = product_acc3
     + (multiplier_reg3[0] ? shifted_multiplicand3 : 66'b0)
@@ -243,7 +244,7 @@ wire [65:0] product_acc_next3 = product_acc3
     + (multiplier_reg3[5] ? (shifted_multiplicand3 << 5) : 66'b0)
     + (multiplier_reg3[6] ? (shifted_multiplicand3 << 6) : 66'b0)
     + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0);
-wire [65:0] sum_acc_next3 = sum_acc3 + product_acc_next3;
+wire [65:0] sum_acc_finish3 = sum_acc3 + product_acc3;
 wire [65:0] shifted_multiplicand4 = {34'b0, multiplicand_reg4} << mul_bit;
 wire [65:0] product_acc_next4 = product_acc4
     + (multiplier_reg4[0] ? shifted_multiplicand4 : 66'b0)
@@ -254,7 +255,7 @@ wire [65:0] product_acc_next4 = product_acc4
     + (multiplier_reg4[5] ? (shifted_multiplicand4 << 5) : 66'b0)
     + (multiplier_reg4[6] ? (shifted_multiplicand4 << 6) : 66'b0)
     + (multiplier_reg4[7] ? (shifted_multiplicand4 << 7) : 66'b0);
-wire [65:0] sum_acc_next4 = sum_acc4 + product_acc_next4;
+wire [65:0] sum_acc_finish4 = sum_acc4 + product_acc4;
 wire [65:0] shifted_multiplicand5 = {34'b0, multiplicand_reg5} << mul_bit;
 wire [65:0] product_acc_next5 = product_acc5
     + (multiplier_reg5[0] ? shifted_multiplicand5 : 66'b0)
@@ -265,7 +266,7 @@ wire [65:0] product_acc_next5 = product_acc5
     + (multiplier_reg5[5] ? (shifted_multiplicand5 << 5) : 66'b0)
     + (multiplier_reg5[6] ? (shifted_multiplicand5 << 6) : 66'b0)
     + (multiplier_reg5[7] ? (shifted_multiplicand5 << 7) : 66'b0);
-wire [65:0] sum_acc_next5 = sum_acc5 + product_acc_next5;
+wire [65:0] sum_acc_finish5 = sum_acc5 + product_acc5;
 wire [65:0] shifted_multiplicand6 = {34'b0, multiplicand_reg6} << mul_bit;
 wire [65:0] product_acc_next6 = product_acc6
     + (multiplier_reg6[0] ? shifted_multiplicand6 : 66'b0)
@@ -276,7 +277,7 @@ wire [65:0] product_acc_next6 = product_acc6
     + (multiplier_reg6[5] ? (shifted_multiplicand6 << 5) : 66'b0)
     + (multiplier_reg6[6] ? (shifted_multiplicand6 << 6) : 66'b0)
     + (multiplier_reg6[7] ? (shifted_multiplicand6 << 7) : 66'b0);
-wire [65:0] sum_acc_next6 = sum_acc6 + product_acc_next6;
+wire [65:0] sum_acc_finish6 = sum_acc6 + product_acc6;
 wire [65:0] shifted_multiplicand7 = {34'b0, multiplicand_reg7} << mul_bit;
 wire [65:0] product_acc_next7 = product_acc7
     + (multiplier_reg7[0] ? shifted_multiplicand7 : 66'b0)
@@ -287,7 +288,7 @@ wire [65:0] product_acc_next7 = product_acc7
     + (multiplier_reg7[5] ? (shifted_multiplicand7 << 5) : 66'b0)
     + (multiplier_reg7[6] ? (shifted_multiplicand7 << 6) : 66'b0)
     + (multiplier_reg7[7] ? (shifted_multiplicand7 << 7) : 66'b0);
-wire [65:0] sum_acc_next7 = sum_acc7 + product_acc_next7;
+wire [65:0] sum_acc_finish7 = sum_acc7 + product_acc7;
 wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_word, 2'b00};
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_write_group << 7) + (dma_write_group << 6) + {24'b0, dma_write_word, 2'b00};
 wire        dma_write_last_group = (dma_write_group == (group_count_reg - 32'd1));
@@ -474,6 +475,7 @@ always @(posedge clk or negedge resetn) begin
         calc_col       <= 2'b0;
         calc_k         <= 2'b0;
         mul_bit        <= 6'b0;
+        mul_finish     <= 1'b0;
         sum_acc        <= 66'b0;
         product_acc    <= 66'b0;
         multiplicand_reg <= 32'b0;
@@ -585,6 +587,7 @@ always @(posedge clk or negedge resetn) begin
                     calc_col <= 2'b0;
                     calc_k   <= 2'b0;
                     mul_bit  <= 6'b0;
+                    mul_finish <= 1'b0;
                     sum_acc  <= 66'b0;
                     product_acc <= 66'b0;
                     multiplicand_reg <= 32'b0;
@@ -632,6 +635,7 @@ always @(posedge clk or negedge resetn) begin
                         calc_col <= 2'b0;
                         calc_k   <= 2'b0;
                         mul_bit  <= 6'b0;
+                        mul_finish <= 1'b0;
                         sum_acc  <= 66'b0;
                         product_acc <= 66'b0;
                         sum_acc1  <= 66'b0;
@@ -731,62 +735,63 @@ always @(posedge clk or negedge resetn) begin
         end
 
         if (compute_active) begin
-            if (mul_bit == 6'd24) begin
+            if (mul_finish) begin
                 if (calc_k == 2'd3) begin
                     if (compute_slot) begin
-                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_next[31:0];
-                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_next[63:32];
-                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
-                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_next1[31:0];
-                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_next1[63:32];
-                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
-                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_next2[31:0];
-                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_next2[63:32];
-                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_next2[65:64]};
-                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_next3[31:0];
-                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_next3[63:32];
-                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_next3[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd0] <= sum_acc_next4[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd1] <= sum_acc_next4[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd2] <= {30'b0, sum_acc_next4[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd0] <= sum_acc_next5[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd1] <= sum_acc_next5[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd2] <= {30'b0, sum_acc_next5[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd0] <= sum_acc_next6[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd1] <= sum_acc_next6[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd2] <= {30'b0, sum_acc_next6[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd0] <= sum_acc_next7[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd1] <= sum_acc_next7[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd2] <= {30'b0, sum_acc_next7[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_finish[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_finish[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_finish[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_finish1[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_finish1[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_finish1[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_finish2[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_finish2[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_finish2[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_finish3[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_finish3[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish3[65:64]};
+                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd0] <= sum_acc_finish4[31:0];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd1] <= sum_acc_finish4[63:32];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd2] <= {30'b0, sum_acc_finish4[65:64]};
+                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd0] <= sum_acc_finish5[31:0];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd1] <= sum_acc_finish5[63:32];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd2] <= {30'b0, sum_acc_finish5[65:64]};
+                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd0] <= sum_acc_finish6[31:0];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd1] <= sum_acc_finish6[63:32];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd2] <= {30'b0, sum_acc_finish6[65:64]};
+                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd0] <= sum_acc_finish7[31:0];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd1] <= sum_acc_finish7[63:32];
+                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish7[65:64]};
                     end else begin
-                        c_regs[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_next[31:0];
-                        c_regs[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_next[63:32];
-                        c_regs[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
-                        c_regs[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_next1[31:0];
-                        c_regs[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_next1[63:32];
-                        c_regs[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
-                        c_regs[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_next2[31:0];
-                        c_regs[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_next2[63:32];
-                        c_regs[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_next2[65:64]};
-                        c_regs[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_next3[31:0];
-                        c_regs[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_next3[63:32];
-                        c_regs[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_next3[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd0] <= sum_acc_next4[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd1] <= sum_acc_next4[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd2] <= {30'b0, sum_acc_next4[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd0] <= sum_acc_next5[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd1] <= sum_acc_next5[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd2] <= {30'b0, sum_acc_next5[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd0] <= sum_acc_next6[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd1] <= sum_acc_next6[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd2] <= {30'b0, sum_acc_next6[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd0] <= sum_acc_next7[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd1] <= sum_acc_next7[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd2] <= {30'b0, sum_acc_next7[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_finish[31:0];
+                        c_regs[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_finish[63:32];
+                        c_regs[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_finish[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_finish1[31:0];
+                        c_regs[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_finish1[63:32];
+                        c_regs[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_finish1[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_finish2[31:0];
+                        c_regs[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_finish2[63:32];
+                        c_regs[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_finish2[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_finish3[31:0];
+                        c_regs[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_finish3[63:32];
+                        c_regs[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish3[65:64]};
+                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd0] <= sum_acc_finish4[31:0];
+                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd1] <= sum_acc_finish4[63:32];
+                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd2] <= {30'b0, sum_acc_finish4[65:64]};
+                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd0] <= sum_acc_finish5[31:0];
+                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd1] <= sum_acc_finish5[63:32];
+                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd2] <= {30'b0, sum_acc_finish5[65:64]};
+                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd0] <= sum_acc_finish6[31:0];
+                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd1] <= sum_acc_finish6[63:32];
+                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd2] <= {30'b0, sum_acc_finish6[65:64]};
+                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd0] <= sum_acc_finish7[31:0];
+                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd1] <= sum_acc_finish7[63:32];
+                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish7[65:64]};
                     end
 
                     if (calc_row == 2'd2) begin
                         compute_active <= 1'b0;
+                        mul_finish <= 1'b0;
                         if (dma_active) begin
                             compute_done_pending <= 1'b1;
                             compute_done_slot <= compute_slot;
@@ -800,6 +805,7 @@ always @(posedge clk or negedge resetn) begin
                         calc_col <= 2'd0;
                         calc_k   <= 2'd0;
                         mul_bit  <= 6'd0;
+                        mul_finish <= 1'b0;
                         sum_acc  <= 66'b0;
                         product_acc <= 66'b0;
                         sum_acc1  <= 66'b0;
@@ -836,21 +842,22 @@ always @(posedge clk or negedge resetn) begin
                 end else begin
                     calc_k   <= calc_k + 2'd1;
                     mul_bit  <= 6'd0;
-                    sum_acc  <= sum_acc_next;
+                    mul_finish <= 1'b0;
+                    sum_acc  <= sum_acc_finish;
                     product_acc <= 66'b0;
-                    sum_acc1 <= sum_acc_next1;
+                    sum_acc1 <= sum_acc_finish1;
                     product_acc1 <= 66'b0;
-                    sum_acc2 <= sum_acc_next2;
+                    sum_acc2 <= sum_acc_finish2;
                     product_acc2 <= 66'b0;
-                    sum_acc3 <= sum_acc_next3;
+                    sum_acc3 <= sum_acc_finish3;
                     product_acc3 <= 66'b0;
-                    sum_acc4 <= sum_acc_next4;
+                    sum_acc4 <= sum_acc_finish4;
                     product_acc4 <= 66'b0;
-                    sum_acc5 <= sum_acc_next5;
+                    sum_acc5 <= sum_acc_finish5;
                     product_acc5 <= 66'b0;
-                    sum_acc6 <= sum_acc_next6;
+                    sum_acc6 <= sum_acc_finish6;
                     product_acc6 <= 66'b0;
-                    sum_acc7 <= sum_acc_next7;
+                    sum_acc7 <= sum_acc_finish7;
                     product_acc7 <= 66'b0;
                     multiplicand_reg <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
                     multiplier_reg   <= b_regs[b_word_index(calc_k + 2'd1, 2'd0)];
@@ -869,6 +876,16 @@ always @(posedge clk or negedge resetn) begin
                     multiplicand_reg7 <= a_regs[a_word_index(calc_row_1, calc_k + 2'd1)];
                     multiplier_reg7   <= b_regs[b_word_index(calc_k + 2'd1, 2'd3)];
                 end
+            end else if (mul_bit == 6'd24) begin
+                mul_finish <= 1'b1;
+                product_acc <= product_acc_next;
+                product_acc1 <= product_acc_next1;
+                product_acc2 <= product_acc_next2;
+                product_acc3 <= product_acc_next3;
+                product_acc4 <= product_acc_next4;
+                product_acc5 <= product_acc_next5;
+                product_acc6 <= product_acc_next6;
+                product_acc7 <= product_acc_next7;
             end else begin
                 mul_bit <= mul_bit + 6'd8;
                 product_acc <= product_acc_next;
@@ -914,6 +931,7 @@ always @(posedge clk or negedge resetn) begin
                         calc_col <= 2'b0;
                         calc_k   <= 2'b0;
                         mul_bit  <= 6'b0;
+                        mul_finish <= 1'b0;
                         sum_acc  <= 66'b0;
                         product_acc <= 66'b0;
                         sum_acc1 <= 66'b0;
