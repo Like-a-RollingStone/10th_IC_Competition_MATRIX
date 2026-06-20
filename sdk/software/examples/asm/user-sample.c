@@ -229,7 +229,6 @@ int main(void)
     U32 status;
 
     setLedPin(0x0001u);
-    uart_puts_blocking("MATMUL_START\r\n");
 
     MATMUL_CTRL_DIRECT = MATMUL_CTRL_SOFT_RST_MASK;
     __asm__ volatile("" : : : "memory");
@@ -241,6 +240,7 @@ int main(void)
     MATMUL_GROUP_COUNT_DIRECT = GROUP_COUNT;
     __asm__ volatile("" : : : "memory");
 
+    uart_puts_blocking("MATMUL_START\r\n");
     MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
     __asm__ volatile("" : : : "memory");
     MATMUL_CTRL_DIRECT = 0u;
@@ -256,10 +256,10 @@ int main(void)
 
     setLedPin(0x007fu);
     crc32 = MATMUL_CRC32_DIRECT;
+    uart_puts_blocking("MATMUL_DONE\r\n");
     uart_puts_blocking("MATMUL_CRC32=");
     uart_put_hex8(crc32);
     uart_puts_blocking("\r\n");
-    uart_puts_blocking("MATMUL_DONE\r\n");
     setLedPin(0x00ffu);
 
     while (1) {
