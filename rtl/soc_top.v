@@ -267,7 +267,7 @@ wire  [31:0]  uart_araddr;
 wire  [ 7:0]  uart_arlen;
 wire  [ 2:0]  uart_arsize;
 wire  [ 1:0]  uart_arburst;
-wire          uart_arlock;
+wire  [ 1:0]  uart_arlock;
 wire  [ 3:0]  uart_arcache;
 wire  [ 2:0]  uart_arprot;
 wire  uart_arvalid;
@@ -277,7 +277,7 @@ wire  [31:0]  uart_awaddr;
 wire  [ 7:0]  uart_awlen;
 wire  [ 2:0]  uart_awsize;
 wire  [ 1:0]  uart_awburst;
-wire          uart_awlock;
+wire  [ 1:0]  uart_awlock;
 wire  [ 3:0]  uart_awcache;
 wire  [ 2:0]  uart_awprot;
 wire  uart_awvalid;
@@ -359,31 +359,7 @@ wire [1 :0] dma_m_bresp  ;
 wire        dma_m_bvalid ;
 wire        dma_m_bready ;
 
-assign dma_m_arid       = 4'b0  ;
-assign dma_m_araddr     = 32'h0;
-assign dma_m_arlen      = 8'b0  ;
-assign dma_m_arsize     = 3'b0 ;
-assign dma_m_arburst    = 2'b0;
-assign dma_m_arlock     = 1'b0;
-assign dma_m_arcache    = 4'b0;
-assign dma_m_arprot     = 3'b0;
-assign dma_m_arvalid    = 1'b0;
-assign dma_m_rready     = 1'b1;
-assign dma_m_awid       = 4'b0;
-assign dma_m_awaddr     = 32'b0;
-assign dma_m_awlen      = 8'b0;
-assign dma_m_awsize     = 3'b0;
-assign dma_m_awburst    = 2'b0;
-assign dma_m_awlock     = 1'b0;
-assign dma_m_awcache    = 4'b0;
-assign dma_m_awprot     = 3'b0;
-assign dma_m_awvalid    = 1'b0;
 assign dma_m_wid        = 4'b0;
-assign dma_m_wdata      = 32'b0;
-assign dma_m_wstrb      = 4'b0;
-assign dma_m_wlast      = 1'b0;
-assign dma_m_wvalid     = 1'b0;
-assign dma_m_bready     = 1'b1;
 
 wire [4 :0] dma_s_arid   ;
 wire [31:0] dma_s_araddr ;
@@ -883,7 +859,43 @@ matmul_axi_slave u_matmul_axi_slave (
     .s_bvalid  (axiOut_7_bvalid),
     .s_bready  (axiOut_7_bready),
     .s_bid     (axiOut_7_bid),
-    .s_bresp   (axiOut_7_bresp)
+    .s_bresp   (axiOut_7_bresp),
+
+    .m_arid    (dma_m_arid),
+    .m_araddr  (dma_m_araddr),
+    .m_arlen   (dma_m_arlen),
+    .m_arsize  (dma_m_arsize),
+    .m_arburst (dma_m_arburst),
+    .m_arlock  (dma_m_arlock),
+    .m_arcache (dma_m_arcache),
+    .m_arprot  (dma_m_arprot),
+    .m_arvalid (dma_m_arvalid),
+    .m_arready (dma_m_arready),
+    .m_rid     (dma_m_rid),
+    .m_rdata   (dma_m_rdata),
+    .m_rresp   (dma_m_rresp),
+    .m_rlast   (dma_m_rlast),
+    .m_rvalid  (dma_m_rvalid),
+    .m_rready  (dma_m_rready),
+    .m_awid    (dma_m_awid),
+    .m_awaddr  (dma_m_awaddr),
+    .m_awlen   (dma_m_awlen),
+    .m_awsize  (dma_m_awsize),
+    .m_awburst (dma_m_awburst),
+    .m_awlock  (dma_m_awlock),
+    .m_awcache (dma_m_awcache),
+    .m_awprot  (dma_m_awprot),
+    .m_awvalid (dma_m_awvalid),
+    .m_awready (dma_m_awready),
+    .m_wdata   (dma_m_wdata),
+    .m_wstrb   (dma_m_wstrb),
+    .m_wlast   (dma_m_wlast),
+    .m_wvalid  (dma_m_wvalid),
+    .m_wready  (dma_m_wready),
+    .m_bid     (dma_m_bid),
+    .m_bresp   (dma_m_bresp),
+    .m_bvalid  (dma_m_bvalid),
+    .m_bready  (dma_m_bready)
 );
 
 AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
@@ -1067,7 +1079,7 @@ AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
     .axiOut_2_awlen          ( uart_awlen     ),
     .axiOut_2_awsize         ( uart_awsize    ),
     .axiOut_2_awburst        ( uart_awburst   ),
-    .axiOut_2_awlock         ( uart_awlock    ),
+    .axiOut_2_awlock         ( uart_awlock[0] ),
     .axiOut_2_awcache        ( uart_awcache   ),
     .axiOut_2_awprot         ( uart_awprot    ),
     //w
@@ -1089,7 +1101,7 @@ AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
     .axiOut_2_arlen          ( uart_arlen     ),
     .axiOut_2_arsize         ( uart_arsize    ),
     .axiOut_2_arburst        ( uart_arburst   ),
-    .axiOut_2_arlock         ( uart_arlock    ),
+    .axiOut_2_arlock         ( uart_arlock[0] ),
     .axiOut_2_arcache        ( uart_arcache   ),
     .axiOut_2_arprot         ( uart_arprot    ),
     //r
