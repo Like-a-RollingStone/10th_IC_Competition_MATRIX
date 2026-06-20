@@ -111,6 +111,7 @@ integer i;
 reg [31:0] a_regs [0:15];
 reg [31:0] b_regs [0:15];
 reg [31:0] c_regs [0:47];
+reg [31:0] c_regs_alt [0:47];
 
 reg        busy;
 reg        done;
@@ -131,9 +132,18 @@ reg        aw_pending;
 reg [31:0] reg_rdata;
 reg [2:0]  dma_state;
 reg [31:0] dma_group;
+reg [31:0] dma_write_group;
 reg [5:0]  dma_read_word;
 reg [5:0]  dma_write_word;
 reg [31:0] dma_write_data;
+reg        compute_slot;
+reg        dma_write_slot;
+reg        pending_write_valid;
+reg        pending_write_slot;
+reg [31:0] pending_write_group;
+reg        compute_done_pending;
+reg        compute_done_slot;
+reg [31:0] compute_done_group;
 reg [1:0]  calc_row;
 reg [1:0]  calc_col;
 reg [1:0]  calc_k;
@@ -206,10 +216,10 @@ wire [65:0] product_acc_next3 = product_acc3
     + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0);
 wire [65:0] sum_acc_next3 = sum_acc3 + product_acc_next3;
 wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_word, 2'b00};
-wire [31:0] dma_dst_addr = dst_base_reg + (dma_group << 7) + (dma_group << 6) + {24'b0, dma_write_word, 2'b00};
-wire        dma_last_group = (dma_group == (group_count_reg - 32'd1));
+wire [31:0] dma_dst_addr = dst_base_reg + (dma_write_group << 7) + (dma_write_group << 6) + {24'b0, dma_write_word, 2'b00};
+wire        dma_write_last_group = (dma_write_group == (group_count_reg - 32'd1));
 wire        dma_last_write = (dma_write_word == 6'd47);
-wire [31:0] dma_current_write_data = c_regs[dma_write_word];
+wire [31:0] dma_current_write_data = dma_write_slot ? c_regs_alt[dma_write_word] : c_regs[dma_write_word];
 wire [31:0] crc_next_word = crc32_update_word(crc_acc, dma_current_write_data);
 
 assign m_arid    = 4'b0;
@@ -364,9 +374,18 @@ always @(posedge clk or negedge resetn) begin
         crc_result_reg <= 32'b0;
         dma_state      <= DMA_IDLE;
         dma_group      <= 32'b0;
+        dma_write_group <= 32'b0;
         dma_read_word  <= 6'b0;
         dma_write_word <= 6'b0;
         dma_write_data <= 32'b0;
+        compute_slot   <= 1'b0;
+        dma_write_slot <= 1'b0;
+        pending_write_valid <= 1'b0;
+        pending_write_slot <= 1'b0;
+        pending_write_group <= 32'b0;
+        compute_done_pending <= 1'b0;
+        compute_done_slot <= 1'b0;
+        compute_done_group <= 32'b0;
         calc_row       <= 2'b0;
         calc_col       <= 2'b0;
         calc_k         <= 2'b0;
@@ -393,6 +412,7 @@ always @(posedge clk or negedge resetn) begin
         end
         for (i = 0; i < 48; i = i + 1) begin
             c_regs[i] <= 32'b0;
+            c_regs_alt[i] <= 32'b0;
         end
     end else begin
         s_awready <= (!aw_pending) && (!s_bvalid);
@@ -441,9 +461,18 @@ always @(posedge clk or negedge resetn) begin
                     m_wvalid <= 1'b0;
                     m_wlast <= 1'b0;
                     dma_group <= 32'b0;
+                    dma_write_group <= 32'b0;
                     dma_read_word <= 6'b0;
                     dma_write_word <= 6'b0;
                     dma_write_data <= 32'b0;
+                    compute_slot <= 1'b0;
+                    dma_write_slot <= 1'b0;
+                    pending_write_valid <= 1'b0;
+                    pending_write_slot <= 1'b0;
+                    pending_write_group <= 32'b0;
+                    compute_done_pending <= 1'b0;
+                    compute_done_slot <= 1'b0;
+                    compute_done_group <= 32'b0;
                     crc_acc <= 32'hffff_ffff;
                     crc_result_reg <= 32'b0;
                     calc_row <= 2'b0;
@@ -468,6 +497,7 @@ always @(posedge clk or negedge resetn) begin
                     multiplier_reg3   <= 32'b0;
                     for (i = 0; i < 48; i = i + 1) begin
                         c_regs[i] <= 32'b0;
+                        c_regs_alt[i] <= 32'b0;
                     end
                 end else if (ctrl_wdata[CTRL_START_BIT]) begin
                     if (busy) begin
@@ -493,14 +523,24 @@ always @(posedge clk or negedge resetn) begin
                             dma_active <= 1'b1;
                             dma_state <= DMA_READ_AR;
                             dma_group <= 32'b0;
+                            dma_write_group <= 32'b0;
                             dma_read_word <= 6'b0;
                             dma_write_word <= 6'b0;
+                            compute_slot <= 1'b0;
+                            dma_write_slot <= 1'b0;
+                            pending_write_valid <= 1'b0;
+                            pending_write_slot <= 1'b0;
+                            pending_write_group <= 32'b0;
+                            compute_done_pending <= 1'b0;
+                            compute_done_slot <= 1'b0;
+                            compute_done_group <= 32'b0;
                             crc_acc <= 32'hffff_ffff;
                             crc_result_reg <= 32'b0;
                         end else begin
                             compute_active <= 1'b1;
                             dma_active <= 1'b0;
                             dma_state <= DMA_IDLE;
+                            compute_slot <= 1'b0;
                             multiplicand_reg <= a_regs[0];
                             multiplier_reg   <= b_regs[0];
                             multiplicand_reg1 <= a_regs[0];
@@ -549,24 +589,40 @@ always @(posedge clk or negedge resetn) begin
         if (compute_active) begin
             if (mul_bit == 6'd24) begin
                 if (calc_k == 2'd3) begin
-                    c_regs[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_next[31:0];
-                    c_regs[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_next[63:32];
-                    c_regs[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
-                    c_regs[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_next1[31:0];
-                    c_regs[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_next1[63:32];
-                    c_regs[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
-                    c_regs[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_next2[31:0];
-                    c_regs[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_next2[63:32];
-                    c_regs[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_next2[65:64]};
-                    c_regs[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_next3[31:0];
-                    c_regs[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_next3[63:32];
-                    c_regs[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_next3[65:64]};
+                    if (compute_slot) begin
+                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_next[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_next[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_next1[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_next1[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_next2[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_next2[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_next2[65:64]};
+                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_next3[31:0];
+                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_next3[63:32];
+                        c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_next3[65:64]};
+                    end else begin
+                        c_regs[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_next[31:0];
+                        c_regs[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_next[63:32];
+                        c_regs[c_word_index(calc_row, 2'd0) + 6'd2] <= {30'b0, sum_acc_next[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd1) + 6'd0] <= sum_acc_next1[31:0];
+                        c_regs[c_word_index(calc_row, 2'd1) + 6'd1] <= sum_acc_next1[63:32];
+                        c_regs[c_word_index(calc_row, 2'd1) + 6'd2] <= {30'b0, sum_acc_next1[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd2) + 6'd0] <= sum_acc_next2[31:0];
+                        c_regs[c_word_index(calc_row, 2'd2) + 6'd1] <= sum_acc_next2[63:32];
+                        c_regs[c_word_index(calc_row, 2'd2) + 6'd2] <= {30'b0, sum_acc_next2[65:64]};
+                        c_regs[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_next3[31:0];
+                        c_regs[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_next3[63:32];
+                        c_regs[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_next3[65:64]};
+                    end
 
                     if (calc_row == 2'd3) begin
                         compute_active <= 1'b0;
                         if (dma_active) begin
-                            dma_state <= DMA_WRITE_AW;
-                            dma_write_word <= 6'b0;
+                            compute_done_pending <= 1'b1;
+                            compute_done_slot <= compute_slot;
+                            compute_done_group <= dma_group;
                         end else begin
                             busy <= 1'b0;
                             done <= 1'b1;
@@ -654,7 +710,6 @@ always @(posedge clk or negedge resetn) begin
                             end
 
                             if (dma_read_word == 6'd31) begin
-                                dma_state <= DMA_COMPUTE;
                                 compute_active <= 1'b1;
                                 calc_row <= 2'b0;
                                 calc_col <= 2'b0;
@@ -676,6 +731,15 @@ always @(posedge clk or negedge resetn) begin
                                 multiplier_reg2   <= b_regs[2];
                                 multiplicand_reg3 <= a_regs[0];
                                 multiplier_reg3   <= b_regs[3];
+                                if (pending_write_valid) begin
+                                    dma_write_group <= pending_write_group;
+                                    dma_write_slot <= pending_write_slot;
+                                    pending_write_valid <= 1'b0;
+                                    dma_write_word <= 6'b0;
+                                    dma_state <= DMA_WRITE_AW;
+                                end else begin
+                                    dma_state <= DMA_COMPUTE;
+                                end
                             end else begin
                                 dma_read_word <= dma_read_word + 6'd1;
                                 dma_state <= DMA_READ_R;
@@ -685,9 +749,24 @@ always @(posedge clk or negedge resetn) begin
                 end
 
                 DMA_COMPUTE: begin
-                    if (!compute_active) begin
-                        dma_state <= DMA_WRITE_AW;
-                        dma_write_word <= 6'b0;
+                    if (compute_done_pending) begin
+                        if (compute_done_group == (group_count_reg - 32'd1)) begin
+                            dma_write_group <= compute_done_group;
+                            dma_write_slot <= compute_done_slot;
+                            compute_done_pending <= 1'b0;
+                            dma_write_word <= 6'b0;
+                            dma_state <= DMA_WRITE_AW;
+                        end else begin
+                            pending_write_valid <= 1'b1;
+                            pending_write_group <= compute_done_group;
+                            pending_write_slot <= compute_done_slot;
+                            compute_slot <= ~compute_done_slot;
+                            compute_done_pending <= 1'b0;
+                            dma_group <= compute_done_group + 32'd1;
+                            dma_read_word <= 6'b0;
+                            dma_write_word <= 6'b0;
+                            dma_state <= DMA_READ_AR;
+                        end
                     end
                 end
 
@@ -715,8 +794,8 @@ always @(posedge clk or negedge resetn) begin
                             dma_state <= DMA_WRITE_B;
                         end else begin
                             dma_write_word <= dma_write_word + 6'd1;
-                            dma_write_data <= c_regs[dma_write_word + 6'd1];
-                            m_wdata <= c_regs[dma_write_word + 6'd1];
+                            dma_write_data <= dma_write_slot ? c_regs_alt[dma_write_word + 6'd1] : c_regs[dma_write_word + 6'd1];
+                            m_wdata <= dma_write_slot ? c_regs_alt[dma_write_word + 6'd1] : c_regs[dma_write_word + 6'd1];
                             m_wlast <= (dma_write_word == 6'd46);
                         end
                     end
@@ -731,17 +810,32 @@ always @(posedge clk or negedge resetn) begin
                             dma_active <= 1'b0;
                             dma_state <= DMA_IDLE;
                         end else begin
-                            if (dma_last_group) begin
+                            if (dma_write_last_group) begin
                                 crc_result_reg <= crc_acc ^ 32'hffff_ffff;
                                 busy <= 1'b0;
                                 done <= 1'b1;
                                 dma_active <= 1'b0;
                                 dma_state <= DMA_IDLE;
+                            end else if (compute_done_pending) begin
+                                if (compute_done_group == (group_count_reg - 32'd1)) begin
+                                    dma_write_group <= compute_done_group;
+                                    dma_write_slot <= compute_done_slot;
+                                    compute_done_pending <= 1'b0;
+                                    dma_write_word <= 6'b0;
+                                    dma_state <= DMA_WRITE_AW;
+                                end else begin
+                                    pending_write_valid <= 1'b1;
+                                    pending_write_group <= compute_done_group;
+                                    pending_write_slot <= compute_done_slot;
+                                    compute_slot <= ~compute_done_slot;
+                                    compute_done_pending <= 1'b0;
+                                    dma_group <= compute_done_group + 32'd1;
+                                    dma_read_word <= 6'b0;
+                                    dma_write_word <= 6'b0;
+                                    dma_state <= DMA_READ_AR;
+                                end
                             end else begin
-                                dma_group <= dma_group + 32'd1;
-                                dma_read_word <= 6'b0;
-                                dma_write_word <= 6'b0;
-                                dma_state <= DMA_READ_AR;
+                                dma_state <= DMA_COMPUTE;
                             end
                         end
                     end
