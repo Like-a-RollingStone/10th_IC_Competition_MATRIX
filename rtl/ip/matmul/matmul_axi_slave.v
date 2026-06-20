@@ -155,7 +155,11 @@ wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[0] ? shifted_multiplicand : 66'b0)
     + (multiplier_reg[1] ? (shifted_multiplicand << 1) : 66'b0)
     + (multiplier_reg[2] ? (shifted_multiplicand << 2) : 66'b0)
-    + (multiplier_reg[3] ? (shifted_multiplicand << 3) : 66'b0);
+    + (multiplier_reg[3] ? (shifted_multiplicand << 3) : 66'b0)
+    + (multiplier_reg[4] ? (shifted_multiplicand << 4) : 66'b0)
+    + (multiplier_reg[5] ? (shifted_multiplicand << 5) : 66'b0)
+    + (multiplier_reg[6] ? (shifted_multiplicand << 6) : 66'b0)
+    + (multiplier_reg[7] ? (shifted_multiplicand << 7) : 66'b0);
 wire [65:0] sum_acc_next = sum_acc + product_acc_next;
 wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_word, 2'b00};
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_group << 7) + (dma_group << 6) + {24'b0, dma_write_word, 2'b00};
@@ -463,7 +467,7 @@ always @(posedge clk or negedge resetn) begin
         end
 
         if (compute_active) begin
-            if (mul_bit == 6'd28) begin
+            if (mul_bit == 6'd24) begin
                 if (calc_k == 2'd3) begin
                     c_regs[c_word_index(calc_row, calc_col) + 6'd0] <= sum_acc_next[31:0];
                     c_regs[c_word_index(calc_row, calc_col) + 6'd1] <= sum_acc_next[63:32];
@@ -497,9 +501,9 @@ always @(posedge clk or negedge resetn) begin
                     multiplier_reg   <= b_regs[b_word_index(calc_k + 2'd1, calc_col)];
                 end
             end else begin
-                mul_bit <= mul_bit + 6'd4;
+                mul_bit <= mul_bit + 6'd8;
                 product_acc <= product_acc_next;
-                multiplier_reg <= {4'b0, multiplier_reg[31:4]};
+                multiplier_reg <= {8'b0, multiplier_reg[31:8]};
             end
         end
 
