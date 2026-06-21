@@ -199,64 +199,51 @@ reg [31:0] multiplier_reg7;
 wire [11:0] ar_word_addr = s_araddr[11:0];
 wire [11:0] aw_word_addr = awaddr_latched[11:0];
 wire [31:0] ctrl_wdata = apply_wstrb(ctrl_shadow, s_wdata, s_wstrb);
-wire [1:0]  next_calc_row = calc_row + 2'd2;
-wire [1:0]  calc_row_1 = calc_row + 2'd1;
+wire [1:0]  next_calc_row = calc_row + 2'd1;
 wire [65:0] shifted_multiplicand = {34'b0, multiplicand_reg} << mul_bit;
 wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[0] ? shifted_multiplicand : 66'b0)
     + (multiplier_reg[1] ? (shifted_multiplicand << 1) : 66'b0)
     + (multiplier_reg[2] ? (shifted_multiplicand << 2) : 66'b0)
-    + (multiplier_reg[3] ? (shifted_multiplicand << 3) : 66'b0);
+    + (multiplier_reg[3] ? (shifted_multiplicand << 3) : 66'b0)
+    + (multiplier_reg[4] ? (shifted_multiplicand << 4) : 66'b0)
+    + (multiplier_reg[5] ? (shifted_multiplicand << 5) : 66'b0)
+    + (multiplier_reg[6] ? (shifted_multiplicand << 6) : 66'b0)
+    + (multiplier_reg[7] ? (shifted_multiplicand << 7) : 66'b0);
 wire [65:0] sum_acc_finish = sum_acc + product_acc;
 wire [65:0] shifted_multiplicand1 = {34'b0, multiplicand_reg1} << mul_bit;
 wire [65:0] product_acc_next1 = product_acc1
     + (multiplier_reg1[0] ? shifted_multiplicand1 : 66'b0)
     + (multiplier_reg1[1] ? (shifted_multiplicand1 << 1) : 66'b0)
     + (multiplier_reg1[2] ? (shifted_multiplicand1 << 2) : 66'b0)
-    + (multiplier_reg1[3] ? (shifted_multiplicand1 << 3) : 66'b0);
+    + (multiplier_reg1[3] ? (shifted_multiplicand1 << 3) : 66'b0)
+    + (multiplier_reg1[4] ? (shifted_multiplicand1 << 4) : 66'b0)
+    + (multiplier_reg1[5] ? (shifted_multiplicand1 << 5) : 66'b0)
+    + (multiplier_reg1[6] ? (shifted_multiplicand1 << 6) : 66'b0)
+    + (multiplier_reg1[7] ? (shifted_multiplicand1 << 7) : 66'b0);
 wire [65:0] sum_acc_finish1 = sum_acc1 + product_acc1;
 wire [65:0] shifted_multiplicand2 = {34'b0, multiplicand_reg2} << mul_bit;
 wire [65:0] product_acc_next2 = product_acc2
     + (multiplier_reg2[0] ? shifted_multiplicand2 : 66'b0)
     + (multiplier_reg2[1] ? (shifted_multiplicand2 << 1) : 66'b0)
     + (multiplier_reg2[2] ? (shifted_multiplicand2 << 2) : 66'b0)
-    + (multiplier_reg2[3] ? (shifted_multiplicand2 << 3) : 66'b0);
+    + (multiplier_reg2[3] ? (shifted_multiplicand2 << 3) : 66'b0)
+    + (multiplier_reg2[4] ? (shifted_multiplicand2 << 4) : 66'b0)
+    + (multiplier_reg2[5] ? (shifted_multiplicand2 << 5) : 66'b0)
+    + (multiplier_reg2[6] ? (shifted_multiplicand2 << 6) : 66'b0)
+    + (multiplier_reg2[7] ? (shifted_multiplicand2 << 7) : 66'b0);
 wire [65:0] sum_acc_finish2 = sum_acc2 + product_acc2;
 wire [65:0] shifted_multiplicand3 = {34'b0, multiplicand_reg3} << mul_bit;
 wire [65:0] product_acc_next3 = product_acc3
     + (multiplier_reg3[0] ? shifted_multiplicand3 : 66'b0)
     + (multiplier_reg3[1] ? (shifted_multiplicand3 << 1) : 66'b0)
     + (multiplier_reg3[2] ? (shifted_multiplicand3 << 2) : 66'b0)
-    + (multiplier_reg3[3] ? (shifted_multiplicand3 << 3) : 66'b0);
+    + (multiplier_reg3[3] ? (shifted_multiplicand3 << 3) : 66'b0)
+    + (multiplier_reg3[4] ? (shifted_multiplicand3 << 4) : 66'b0)
+    + (multiplier_reg3[5] ? (shifted_multiplicand3 << 5) : 66'b0)
+    + (multiplier_reg3[6] ? (shifted_multiplicand3 << 6) : 66'b0)
+    + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0);
 wire [65:0] sum_acc_finish3 = sum_acc3 + product_acc3;
-wire [65:0] shifted_multiplicand4 = {34'b0, multiplicand_reg4} << mul_bit;
-wire [65:0] product_acc_next4 = product_acc4
-    + (multiplier_reg4[0] ? shifted_multiplicand4 : 66'b0)
-    + (multiplier_reg4[1] ? (shifted_multiplicand4 << 1) : 66'b0)
-    + (multiplier_reg4[2] ? (shifted_multiplicand4 << 2) : 66'b0)
-    + (multiplier_reg4[3] ? (shifted_multiplicand4 << 3) : 66'b0);
-wire [65:0] sum_acc_finish4 = sum_acc4 + product_acc4;
-wire [65:0] shifted_multiplicand5 = {34'b0, multiplicand_reg5} << mul_bit;
-wire [65:0] product_acc_next5 = product_acc5
-    + (multiplier_reg5[0] ? shifted_multiplicand5 : 66'b0)
-    + (multiplier_reg5[1] ? (shifted_multiplicand5 << 1) : 66'b0)
-    + (multiplier_reg5[2] ? (shifted_multiplicand5 << 2) : 66'b0)
-    + (multiplier_reg5[3] ? (shifted_multiplicand5 << 3) : 66'b0);
-wire [65:0] sum_acc_finish5 = sum_acc5 + product_acc5;
-wire [65:0] shifted_multiplicand6 = {34'b0, multiplicand_reg6} << mul_bit;
-wire [65:0] product_acc_next6 = product_acc6
-    + (multiplier_reg6[0] ? shifted_multiplicand6 : 66'b0)
-    + (multiplier_reg6[1] ? (shifted_multiplicand6 << 1) : 66'b0)
-    + (multiplier_reg6[2] ? (shifted_multiplicand6 << 2) : 66'b0)
-    + (multiplier_reg6[3] ? (shifted_multiplicand6 << 3) : 66'b0);
-wire [65:0] sum_acc_finish6 = sum_acc6 + product_acc6;
-wire [65:0] shifted_multiplicand7 = {34'b0, multiplicand_reg7} << mul_bit;
-wire [65:0] product_acc_next7 = product_acc7
-    + (multiplier_reg7[0] ? shifted_multiplicand7 : 66'b0)
-    + (multiplier_reg7[1] ? (shifted_multiplicand7 << 1) : 66'b0)
-    + (multiplier_reg7[2] ? (shifted_multiplicand7 << 2) : 66'b0)
-    + (multiplier_reg7[3] ? (shifted_multiplicand7 << 3) : 66'b0);
-wire [65:0] sum_acc_finish7 = sum_acc7 + product_acc7;
 wire [31:0] dma_src_addr = src_base_reg + (dma_group << 7) + {24'b0, dma_read_word, 2'b00};
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_write_group << 7) + (dma_write_group << 6) + {24'b0, dma_write_word, 2'b00};
 wire        dma_write_last_group = (dma_write_group == (group_count_reg - 32'd1));
@@ -657,14 +644,6 @@ always @(posedge clk or negedge resetn) begin
                             multiplier_reg2   <= b_regs[2];
                             multiplicand_reg3 <= a_regs[0];
                             multiplier_reg3   <= b_regs[3];
-                            multiplicand_reg4 <= a_regs[4];
-                            multiplier_reg4   <= b_regs[0];
-                            multiplicand_reg5 <= a_regs[4];
-                            multiplier_reg5   <= b_regs[1];
-                            multiplicand_reg6 <= a_regs[4];
-                            multiplier_reg6   <= b_regs[2];
-                            multiplicand_reg7 <= a_regs[4];
-                            multiplier_reg7   <= b_regs[3];
                         end
                     end
                 end
@@ -718,18 +697,6 @@ always @(posedge clk or negedge resetn) begin
                         c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_finish3[31:0];
                         c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_finish3[63:32];
                         c_regs_alt[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish3[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd0] <= sum_acc_finish4[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd1] <= sum_acc_finish4[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd0) + 6'd2] <= {30'b0, sum_acc_finish4[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd0] <= sum_acc_finish5[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd1] <= sum_acc_finish5[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd1) + 6'd2] <= {30'b0, sum_acc_finish5[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd0] <= sum_acc_finish6[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd1] <= sum_acc_finish6[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd2) + 6'd2] <= {30'b0, sum_acc_finish6[65:64]};
-                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd0] <= sum_acc_finish7[31:0];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd1] <= sum_acc_finish7[63:32];
-                        c_regs_alt[c_word_index(calc_row_1, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish7[65:64]};
                     end else begin
                         c_regs[c_word_index(calc_row, 2'd0) + 6'd0] <= sum_acc_finish[31:0];
                         c_regs[c_word_index(calc_row, 2'd0) + 6'd1] <= sum_acc_finish[63:32];
@@ -743,21 +710,9 @@ always @(posedge clk or negedge resetn) begin
                         c_regs[c_word_index(calc_row, 2'd3) + 6'd0] <= sum_acc_finish3[31:0];
                         c_regs[c_word_index(calc_row, 2'd3) + 6'd1] <= sum_acc_finish3[63:32];
                         c_regs[c_word_index(calc_row, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish3[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd0] <= sum_acc_finish4[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd1] <= sum_acc_finish4[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd0) + 6'd2] <= {30'b0, sum_acc_finish4[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd0] <= sum_acc_finish5[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd1] <= sum_acc_finish5[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd1) + 6'd2] <= {30'b0, sum_acc_finish5[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd0] <= sum_acc_finish6[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd1] <= sum_acc_finish6[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd2) + 6'd2] <= {30'b0, sum_acc_finish6[65:64]};
-                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd0] <= sum_acc_finish7[31:0];
-                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd1] <= sum_acc_finish7[63:32];
-                        c_regs[c_word_index(calc_row_1, 2'd3) + 6'd2] <= {30'b0, sum_acc_finish7[65:64]};
                     end
 
-                    if (calc_row == 2'd2) begin
+                    if (calc_row == 2'd3) begin
                         compute_active <= 1'b0;
                         mul_finish <= 1'b0;
                         if (dma_active) begin
@@ -782,14 +737,6 @@ always @(posedge clk or negedge resetn) begin
                         product_acc2 <= 66'b0;
                         sum_acc3  <= 66'b0;
                         product_acc3 <= 66'b0;
-                        sum_acc4  <= 66'b0;
-                        product_acc4 <= 66'b0;
-                        sum_acc5  <= 66'b0;
-                        product_acc5 <= 66'b0;
-                        sum_acc6  <= 66'b0;
-                        product_acc6 <= 66'b0;
-                        sum_acc7  <= 66'b0;
-                        product_acc7 <= 66'b0;
                         multiplicand_reg <= a_regs[a_word_index(next_calc_row, 2'd0)];
                         multiplier_reg   <= b_regs[b_word_index(2'd0, 2'd0)];
                         multiplicand_reg1 <= a_regs[a_word_index(next_calc_row, 2'd0)];
@@ -798,14 +745,6 @@ always @(posedge clk or negedge resetn) begin
                         multiplier_reg2   <= b_regs[b_word_index(2'd0, 2'd2)];
                         multiplicand_reg3 <= a_regs[a_word_index(next_calc_row, 2'd0)];
                         multiplier_reg3   <= b_regs[b_word_index(2'd0, 2'd3)];
-                        multiplicand_reg4 <= a_regs[a_word_index(next_calc_row + 2'd1, 2'd0)];
-                        multiplier_reg4   <= b_regs[b_word_index(2'd0, 2'd0)];
-                        multiplicand_reg5 <= a_regs[a_word_index(next_calc_row + 2'd1, 2'd0)];
-                        multiplier_reg5   <= b_regs[b_word_index(2'd0, 2'd1)];
-                        multiplicand_reg6 <= a_regs[a_word_index(next_calc_row + 2'd1, 2'd0)];
-                        multiplier_reg6   <= b_regs[b_word_index(2'd0, 2'd2)];
-                        multiplicand_reg7 <= a_regs[a_word_index(next_calc_row + 2'd1, 2'd0)];
-                        multiplier_reg7   <= b_regs[b_word_index(2'd0, 2'd3)];
                     end
                 end else begin
                     calc_k   <= calc_k + 2'd1;
@@ -819,14 +758,6 @@ always @(posedge clk or negedge resetn) begin
                     product_acc2 <= 66'b0;
                     sum_acc3 <= sum_acc_finish3;
                     product_acc3 <= 66'b0;
-                    sum_acc4 <= sum_acc_finish4;
-                    product_acc4 <= 66'b0;
-                    sum_acc5 <= sum_acc_finish5;
-                    product_acc5 <= 66'b0;
-                    sum_acc6 <= sum_acc_finish6;
-                    product_acc6 <= 66'b0;
-                    sum_acc7 <= sum_acc_finish7;
-                    product_acc7 <= 66'b0;
                     multiplicand_reg <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
                     multiplier_reg   <= b_regs[b_word_index(calc_k + 2'd1, 2'd0)];
                     multiplicand_reg1 <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
@@ -835,43 +766,23 @@ always @(posedge clk or negedge resetn) begin
                     multiplier_reg2   <= b_regs[b_word_index(calc_k + 2'd1, 2'd2)];
                     multiplicand_reg3 <= a_regs[a_word_index(calc_row, calc_k + 2'd1)];
                     multiplier_reg3   <= b_regs[b_word_index(calc_k + 2'd1, 2'd3)];
-                    multiplicand_reg4 <= a_regs[a_word_index(calc_row_1, calc_k + 2'd1)];
-                    multiplier_reg4   <= b_regs[b_word_index(calc_k + 2'd1, 2'd0)];
-                    multiplicand_reg5 <= a_regs[a_word_index(calc_row_1, calc_k + 2'd1)];
-                    multiplier_reg5   <= b_regs[b_word_index(calc_k + 2'd1, 2'd1)];
-                    multiplicand_reg6 <= a_regs[a_word_index(calc_row_1, calc_k + 2'd1)];
-                    multiplier_reg6   <= b_regs[b_word_index(calc_k + 2'd1, 2'd2)];
-                    multiplicand_reg7 <= a_regs[a_word_index(calc_row_1, calc_k + 2'd1)];
-                    multiplier_reg7   <= b_regs[b_word_index(calc_k + 2'd1, 2'd3)];
                 end
-            end else if (mul_bit == 6'd28) begin
+            end else if (mul_bit == 6'd24) begin
                 mul_finish <= 1'b1;
                 product_acc <= product_acc_next;
                 product_acc1 <= product_acc_next1;
                 product_acc2 <= product_acc_next2;
                 product_acc3 <= product_acc_next3;
-                product_acc4 <= product_acc_next4;
-                product_acc5 <= product_acc_next5;
-                product_acc6 <= product_acc_next6;
-                product_acc7 <= product_acc_next7;
             end else begin
-                mul_bit <= mul_bit + 6'd4;
+                mul_bit <= mul_bit + 6'd8;
                 product_acc <= product_acc_next;
-                multiplier_reg <= {4'b0, multiplier_reg[31:4]};
+                multiplier_reg <= {8'b0, multiplier_reg[31:8]};
                 product_acc1 <= product_acc_next1;
-                multiplier_reg1 <= {4'b0, multiplier_reg1[31:4]};
+                multiplier_reg1 <= {8'b0, multiplier_reg1[31:8]};
                 product_acc2 <= product_acc_next2;
-                multiplier_reg2 <= {4'b0, multiplier_reg2[31:4]};
+                multiplier_reg2 <= {8'b0, multiplier_reg2[31:8]};
                 product_acc3 <= product_acc_next3;
-                multiplier_reg3 <= {4'b0, multiplier_reg3[31:4]};
-                product_acc4 <= product_acc_next4;
-                multiplier_reg4 <= {4'b0, multiplier_reg4[31:4]};
-                product_acc5 <= product_acc_next5;
-                multiplier_reg5 <= {4'b0, multiplier_reg5[31:4]};
-                product_acc6 <= product_acc_next6;
-                multiplier_reg6 <= {4'b0, multiplier_reg6[31:4]};
-                product_acc7 <= product_acc_next7;
-                multiplier_reg7 <= {4'b0, multiplier_reg7[31:4]};
+                multiplier_reg3 <= {8'b0, multiplier_reg3[31:8]};
             end
         end
 
@@ -924,14 +835,6 @@ always @(posedge clk or negedge resetn) begin
                         multiplier_reg2   <= b_regs[2];
                         multiplicand_reg3 <= a_regs[0];
                         multiplier_reg3   <= b_regs[3];
-                        multiplicand_reg4 <= a_regs[4];
-                        multiplier_reg4   <= b_regs[0];
-                        multiplicand_reg5 <= a_regs[4];
-                        multiplier_reg5   <= b_regs[1];
-                        multiplicand_reg6 <= a_regs[4];
-                        multiplier_reg6   <= b_regs[2];
-                        multiplicand_reg7 <= a_regs[4];
-                        multiplier_reg7   <= b_regs[3];
                         if (pending_write_valid) begin
                             dma_write_group <= pending_write_group;
                             dma_write_slot <= pending_write_slot;
