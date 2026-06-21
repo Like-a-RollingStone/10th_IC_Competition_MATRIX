@@ -258,6 +258,8 @@ assign direct_ext_oe_n = ~(direct_active_reg && direct_read_active);
 
 `ifdef MODELSIM_BUILD
 assign direct_ext_we_n = ~(direct_ext_write_gate && !clk);
+`elsif VERILATOR
+assign direct_ext_we_n = ~(direct_ext_write_gate && !clk);
 `else
 ODDR #(
     .DDR_CLK_EDGE("OPPOSITE_EDGE"),
