@@ -249,6 +249,9 @@ axi2sram_sp_external #(
 
 wire choose_sram = soc_sram_addr[22];//1:ExtRAM 0:BaseRAM
 wire [3:0] be_out = soc_sram_we ? soc_sram_be : 4'b1111;
+wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
+wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
+wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : normal_ext_we_n;
 
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
@@ -261,7 +264,25 @@ assign ext_ram_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
 assign ext_ram_be_n = direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111);
 assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1);
 assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
-assign ext_ram_we_n = direct_ext_active ? direct_ext_we_n : (choose_sram ? ~soc_sram_we : 1'b1);
+`ifdef MODELSIM_BUILD
+assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
+`elsif VERILATOR
+assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
+`else
+ODDR #(
+    .DDR_CLK_EDGE("OPPOSITE_EDGE"),
+    .INIT(1'b1),
+    .SRTYPE("SYNC")
+) ext_ram_we_n_oddr (
+    .Q(ext_ram_we_n),
+    .C(aclk),
+    .CE(1'b1),
+    .D1(ext_ram_we_pos),
+    .D2(ext_ram_we_neg),
+    .R(1'b0),
+    .S(1'b0)
+);
+`endif
 assign ext_ram_data = direct_ext_active
                     ? (direct_ext_oe_n ? direct_ext_wdata : 32'hzzzzzzzz)
                     : (((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz);
