@@ -250,11 +250,29 @@ wire        dma_write_last_group = (dma_write_group == (group_count_reg - 32'd1)
 wire        dma_last_write = (dma_write_word == 6'd47);
 wire [31:0] dma_current_write_data = dma_write_slot ? c_regs_alt[dma_write_word] : c_regs[dma_write_word];
 wire [31:0] crc_next_word = crc32_update_word(crc_acc, dma_current_write_data);
+wire        direct_ext_write_gate = direct_active_reg && direct_write_strobe;
 
 assign direct_ext_active = direct_active_reg;
 assign direct_ext_ce_n = ~direct_active_reg;
 assign direct_ext_oe_n = ~(direct_active_reg && direct_read_active);
-assign direct_ext_we_n = ~(direct_active_reg && direct_write_strobe && !clk);
+
+`ifdef MODELSIM_BUILD
+assign direct_ext_we_n = ~(direct_ext_write_gate && !clk);
+`else
+ODDR #(
+    .DDR_CLK_EDGE("OPPOSITE_EDGE"),
+    .INIT(1'b1),
+    .SRTYPE("SYNC")
+) direct_ext_we_n_oddr (
+    .Q(direct_ext_we_n),
+    .C(clk),
+    .CE(1'b1),
+    .D1(1'b1),
+    .D2(~direct_ext_write_gate),
+    .R(1'b0),
+    .S(1'b0)
+);
+`endif
 
 assign m_arid    = 4'b0;
 assign m_arlen   = 8'd31;
@@ -343,7 +361,7 @@ function [31:0] crc32_update_word;
         crc = crc32_update_byte(crc, data_in[23:16]);
         crc = crc32_update_byte(crc, data_in[31:24]);
         crc32_update_word = crc;
-    end
+end
 endfunction
 
 always @(*) begin
