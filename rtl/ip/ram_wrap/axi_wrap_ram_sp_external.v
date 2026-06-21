@@ -263,7 +263,7 @@ assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_
 assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
 assign ext_ram_we_n = direct_ext_active ? direct_ext_we_n : (choose_sram ? ~soc_sram_we : 1'b1);
 assign ext_ram_data = direct_ext_active
-                    ? ((!direct_ext_we_n) ? direct_ext_wdata : 32'hzzzzzzzz)
+                    ? (direct_ext_oe_n ? direct_ext_wdata : 32'hzzzzzzzz)
                     : (((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz);
 
 assign soc_sram_rdata = choose_sram ? ext_ram_data : base_ram_data;
