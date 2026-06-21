@@ -251,7 +251,7 @@ wire choose_sram = soc_sram_addr[22];//1:ExtRAM 0:BaseRAM
 wire [3:0] be_out = soc_sram_we ? soc_sram_be : 4'b1111;
 wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
 wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
-wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : normal_ext_we_n;
+wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
 
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
