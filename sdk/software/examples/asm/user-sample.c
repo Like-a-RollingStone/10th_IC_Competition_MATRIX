@@ -284,13 +284,7 @@ int main(void)
     U32 crc32;
     U32 status;
 
-    setLedPin(0x0001u);
     uart_puts_blocking("MATMUL_START\n");
-
-    MATMUL_CTRL_DIRECT = MATMUL_CTRL_SOFT_RST_MASK;
-    __asm__ volatile("" : : : "memory");
-    MATMUL_CTRL_DIRECT = 0u;
-    __asm__ volatile("" : : : "memory");
 
     MATMUL_SRC_BASE_DIRECT = EXTRAM_CACHED_BASE_ADDR;
     MATMUL_DST_BASE_DIRECT = dst_base_addr;
@@ -310,11 +304,9 @@ int main(void)
         fail(1u, status);
     }
 
-    setLedPin(0x007fu);
     crc32 = MATMUL_CRC32_DIRECT;
     make_crc32_done_lines(done_lines, crc32);
     uart_puts_blocking(done_lines);
-    setLedPin(0x00ffu);
 
     while (1) {
     }
