@@ -368,6 +368,10 @@ wire        matmul_direct_ext_oe_n;
 wire        matmul_direct_ext_we_n;
 wire [31:0] matmul_direct_ext_wdata;
 wire [31:0] matmul_direct_ext_rdata;
+wire        matmul_direct_ext_fast_read;
+wire [19:0] matmul_direct_ext_addr_fall;
+wire [31:0] matmul_direct_ext_rdata_even;
+wire [31:0] matmul_direct_ext_rdata_odd;
 
 assign dma_m_wid        = 4'b0;
 
@@ -915,6 +919,10 @@ matmul_axi_slave u_matmul_axi_slave (
     .direct_ext_we_n   (matmul_direct_ext_we_n),
     .direct_ext_wdata  (matmul_direct_ext_wdata),
     .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .direct_ext_fast_read (matmul_direct_ext_fast_read),
+    .direct_ext_addr_fall (matmul_direct_ext_addr_fall),
+    .direct_ext_rdata_even (matmul_direct_ext_rdata_even),
+    .direct_ext_rdata_odd  (matmul_direct_ext_rdata_odd),
     .marker_uart_active (matmul_marker_uart_active),
     .marker_uart_tx     (matmul_marker_uart_tx)
 );
@@ -1557,7 +1565,11 @@ axi_wrap_ram_sp_external u_axi_ram (
     .direct_ext_oe_n    (matmul_direct_ext_oe_n),
     .direct_ext_we_n    (matmul_direct_ext_we_n),
     .direct_ext_wdata   (matmul_direct_ext_wdata),
-    .direct_ext_rdata   (matmul_direct_ext_rdata)
+    .direct_ext_rdata   (matmul_direct_ext_rdata),
+    .direct_ext_fast_read (matmul_direct_ext_fast_read),
+    .direct_ext_addr_fall (matmul_direct_ext_addr_fall),
+    .direct_ext_rdata_even (matmul_direct_ext_rdata_even),
+    .direct_ext_rdata_odd  (matmul_direct_ext_rdata_odd)
 );
 
 // Dummy wires for UART DMA outputs (not used in stage 1)
