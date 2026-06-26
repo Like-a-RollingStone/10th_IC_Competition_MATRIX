@@ -279,35 +279,6 @@ static void fail(U32 code, U32 detail)
 
 int main(void)
 {
-    U32 dst_base_addr = EXTRAM_CACHED_BASE_ADDR + GROUP_COUNT * AB_WORDS_PER_GROUP * 4u;
-    char done_lines[36];
-    U32 crc32;
-    U32 status;
-
-    uart_puts_blocking("MATMUL_START\n");
-
-    MATMUL_SRC_BASE_DIRECT = EXTRAM_CACHED_BASE_ADDR;
-    MATMUL_DST_BASE_DIRECT = dst_base_addr;
-    MATMUL_GROUP_COUNT_DIRECT = GROUP_COUNT;
-    __asm__ volatile("" : : : "memory");
-
-    MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
-    __asm__ volatile("" : : : "memory");
-    MATMUL_CTRL_DIRECT = 0u;
-    __asm__ volatile("" : : : "memory");
-
-    do {
-        status = MATMUL_STATUS_DIRECT;
-    } while ((status & (MATMUL_STATUS_DONE | MATMUL_STATUS_ERROR)) == 0u);
-
-    if ((status & MATMUL_STATUS_ERROR) != 0u) {
-        fail(1u, status);
-    }
-
-    crc32 = MATMUL_CRC32_DIRECT;
-    make_crc32_done_lines(done_lines, crc32);
-    uart_puts_blocking(done_lines);
-
     while (1) {
     }
 }
