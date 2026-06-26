@@ -155,6 +155,33 @@ static void uart_put_hex8(U32 value)
     }
 }
 
+static void make_crc32_line(char line[25], U32 value)
+{
+    int i;
+
+    line[0] = 'M';
+    line[1] = 'A';
+    line[2] = 'T';
+    line[3] = 'M';
+    line[4] = 'U';
+    line[5] = 'L';
+    line[6] = '_';
+    line[7] = 'C';
+    line[8] = 'R';
+    line[9] = 'C';
+    line[10] = '3';
+    line[11] = '2';
+    line[12] = '=';
+
+    for (i = 0; i < 8; ++i) {
+        U32 digit = (value >> (28u - (U32)i * 4u)) & 0xfu;
+        line[13 + i] = (char)(digit < 10u ? ('0' + digit) : ('a' + (digit - 10u)));
+    }
+
+    line[21] = '\n';
+    line[22] = '\0';
+}
+
 static void uart_put_u32(U32 value)
 {
     char buf[10];
@@ -225,11 +252,12 @@ static void fail(U32 code, U32 detail)
 int main(void)
 {
     U32 dst_base_addr = EXTRAM_CACHED_BASE_ADDR + GROUP_COUNT * AB_WORDS_PER_GROUP * 4u;
+    char crc32_line[25];
     U32 crc32;
     U32 status;
 
     setLedPin(0x0001u);
-    uart_puts_blocking("MATMUL_START\r\n");
+    uart_puts_blocking("MATMUL_START\n");
 
     MATMUL_CTRL_DIRECT = MATMUL_CTRL_SOFT_RST_MASK;
     __asm__ volatile("" : : : "memory");
@@ -245,7 +273,6 @@ int main(void)
     __asm__ volatile("" : : : "memory");
     MATMUL_CTRL_DIRECT = 0u;
     __asm__ volatile("" : : : "memory");
-    uart_puts_blocking("MATMUL_CRC32=");
 
     do {
         status = MATMUL_STATUS_DIRECT;
@@ -257,9 +284,9 @@ int main(void)
 
     setLedPin(0x007fu);
     crc32 = MATMUL_CRC32_DIRECT;
-    uart_put_hex8(crc32);
-    uart_puts_blocking("\r\n");
-    uart_puts_blocking("MATMUL_DONE\r\n");
+    make_crc32_line(crc32_line, crc32);
+    uart_puts_blocking(crc32_line);
+    uart_puts_blocking("MATMUL_DONE\n");
     setLedPin(0x00ffu);
 
     while (1) {
