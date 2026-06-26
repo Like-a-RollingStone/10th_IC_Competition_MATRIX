@@ -309,9 +309,12 @@ wire        dma_write_last_group = (dma_write_group == (group_count_reg - 32'd1)
 wire        dma_last_write = (dma_write_word == 6'd47);
 wire [31:0] dma_current_write_data = dma_write_slot ? c_regs_alt[dma_write_word] : c_regs[dma_write_word];
 wire [31:0] crc_next_word = crc32_update_word(crc_acc, dma_current_write_data);
-wire [31:0] crc_stream_data = crc_stream_slot ? c_regs_alt[crc_stream_word] : c_regs[crc_stream_word];
-wire [31:0] crc_next_stream = crc32_update_word(crc_acc, crc_stream_data);
-wire        crc_stream_last_word = (crc_stream_word == 6'd47);
+wire [5:0]  crc_stream_word_next = crc_stream_word + 6'd1;
+wire [31:0] crc_stream_data0 = crc_stream_slot ? c_regs_alt[crc_stream_word] : c_regs[crc_stream_word];
+wire [31:0] crc_stream_data1 = crc_stream_slot ? c_regs_alt[crc_stream_word_next] : c_regs[crc_stream_word_next];
+wire [31:0] crc_next_stream0 = crc32_update_word(crc_acc, crc_stream_data0);
+wire [31:0] crc_next_stream = crc32_update_word(crc_next_stream0, crc_stream_data1);
+wire        crc_stream_last_pair = (crc_stream_word == 6'd46);
 wire        crc_stream_last_group = (crc_stream_group == (group_count_reg - 32'd1));
 wire        direct_ext_write_gate = direct_active_reg && direct_write_strobe;
 wire        can_prefetch_next = compute_active && ((dma_group + 32'd1) < group_count_reg) && (!input_ready_valid);
@@ -952,9 +955,17 @@ always @(posedge clk or negedge resetn) begin
                             compute_done_pending <= 1'b1;
                             compute_done_slot <= compute_slot;
                             compute_done_group <= dma_group;
-                            crc_pending_valid <= 1'b1;
-                            crc_pending_slot <= compute_slot;
-                            crc_pending_group <= dma_group;
+                            if (!crc_stream_active && !crc_pending_valid) begin
+                                crc_stream_active <= 1'b1;
+                                crc_stream_slot <= compute_slot;
+                                crc_stream_group <= dma_group;
+                                crc_stream_word <= 6'b0;
+                                crc_pending_valid <= 1'b0;
+                            end else begin
+                                crc_pending_valid <= 1'b1;
+                                crc_pending_slot <= compute_slot;
+                                crc_pending_group <= dma_group;
+                            end
                         end else begin
                             calc_row <= 2'd2;
                             calc_col <= 2'd0;
@@ -1053,7 +1064,7 @@ always @(posedge clk or negedge resetn) begin
         if (dma_active) begin
             if (crc_stream_active) begin
                 crc_acc <= crc_next_stream;
-                if (crc_stream_last_word) begin
+                if (crc_stream_last_pair) begin
                     crc_stream_active <= 1'b0;
                     crc_stream_word <= 6'b0;
                     if (crc_stream_last_group) begin
@@ -1071,7 +1082,7 @@ always @(posedge clk or negedge resetn) begin
                         dma_state <= DMA_IDLE;
                     end
                 end else begin
-                    crc_stream_word <= crc_stream_word + 6'd1;
+                    crc_stream_word <= crc_stream_word + 6'd2;
                 end
             end else if (crc_pending_valid) begin
                 crc_stream_active <= 1'b1;
