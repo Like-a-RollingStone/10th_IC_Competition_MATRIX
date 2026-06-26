@@ -259,7 +259,11 @@ wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
 wire [19:0] normal_ext_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
 wire        fast_read_active = direct_ext_active && direct_ext_fast_read;
 wire [19:0] ext_ram_addr_pos = fast_read_active ? direct_ext_addr : normal_ext_addr;
-wire [19:0] ext_ram_addr_neg = fast_read_active ? direct_ext_addr_fall : normal_ext_addr;
+// Keep the ordinary AXI SRAM bridge off ODDR.D2. D2 is checked as a half-cycle
+// path, so feeding the normal bridge address into it creates avoidable WNS
+// failures even though the contest workload only needs direct ExtRAM access.
+wire [19:0] ext_ram_addr_neg = fast_read_active ? direct_ext_addr_fall
+                                                : (direct_ext_active ? direct_ext_addr : 20'b0);
 reg [31:0] direct_ext_rdata_even_neg_q;
 reg [31:0] direct_ext_rdata_even_q;
 reg [31:0] direct_ext_rdata_odd_q;
