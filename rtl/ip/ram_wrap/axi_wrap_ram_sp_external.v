@@ -99,7 +99,11 @@ module axi_wrap_ram_sp_external (
     input         direct_ext_oe_n,
     input         direct_ext_we_n,
     input  [31:0] direct_ext_wdata,
-    output [31:0] direct_ext_rdata
+    output [31:0] direct_ext_rdata,
+    input         direct_ext_fast_read,
+    input  [19:0] direct_ext_addr_fall,
+    output [31:0] direct_ext_rdata_even,
+    output [31:0] direct_ext_rdata_odd
 );
 
 
@@ -252,6 +256,13 @@ wire [3:0] be_out = soc_sram_we ? soc_sram_be : 4'b1111;
 wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
 wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
 wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
+wire [19:0] normal_ext_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
+wire        fast_read_active = direct_ext_active && direct_ext_fast_read;
+wire [19:0] ext_ram_addr_pos = fast_read_active ? direct_ext_addr : normal_ext_addr;
+wire [19:0] ext_ram_addr_neg = fast_read_active ? direct_ext_addr_fall : normal_ext_addr;
+reg [31:0] direct_ext_rdata_even_neg_q;
+reg [31:0] direct_ext_rdata_even_q;
+reg [31:0] direct_ext_rdata_odd_q;
 
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
@@ -260,7 +271,32 @@ assign base_ram_oe_n = soc_sram_we | choose_sram;
 assign base_ram_we_n = ~(soc_sram_we & (~choose_sram));
 assign base_ram_data = ((~choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz;
 
-assign ext_ram_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
+`ifdef MODELSIM_BUILD
+assign ext_ram_addr = fast_read_active ? (aclk ? ext_ram_addr_neg : ext_ram_addr_pos)
+                                      : normal_ext_addr;
+`elsif VERILATOR
+assign ext_ram_addr = fast_read_active ? (aclk ? ext_ram_addr_neg : ext_ram_addr_pos)
+                                      : normal_ext_addr;
+`else
+genvar ext_addr_i;
+generate
+    for (ext_addr_i = 0; ext_addr_i < 20; ext_addr_i = ext_addr_i + 1) begin : gen_ext_addr_oddr
+        ODDR #(
+            .DDR_CLK_EDGE("OPPOSITE_EDGE"),
+            .INIT(1'b0),
+            .SRTYPE("SYNC")
+        ) ext_ram_addr_oddr (
+            .Q(ext_ram_addr[ext_addr_i]),
+            .C(aclk),
+            .CE(1'b1),
+            .D1(ext_ram_addr_pos[ext_addr_i]),
+            .D2(ext_ram_addr_neg[ext_addr_i]),
+            .R(1'b0),
+            .S(1'b0)
+        );
+    end
+endgenerate
+`endif
 assign ext_ram_be_n = direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111);
 assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1);
 assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
@@ -289,5 +325,56 @@ assign ext_ram_data = direct_ext_active
 
 assign soc_sram_rdata = choose_sram ? ext_ram_data : base_ram_data;
 assign direct_ext_rdata = ext_ram_data;
+`ifdef MODELSIM_BUILD
+always @(negedge aclk) begin
+    if (fast_read_active) begin
+        direct_ext_rdata_even_neg_q <= #1 ext_ram_data;
+    end
+end
+
+always @(posedge aclk) begin
+    if (fast_read_active) begin
+        direct_ext_rdata_even_q <= #1 direct_ext_rdata_even_neg_q;
+        direct_ext_rdata_odd_q <= #1 ext_ram_data;
+    end else begin
+        direct_ext_rdata_even_q <= #1 ext_ram_data;
+        direct_ext_rdata_odd_q <= #1 ext_ram_data;
+    end
+end
+`elsif VERILATOR
+always @(negedge aclk) begin
+    if (fast_read_active) begin
+        direct_ext_rdata_even_neg_q <= ext_ram_data;
+    end
+end
+
+always @(posedge aclk) begin
+    if (fast_read_active) begin
+        direct_ext_rdata_even_q <= direct_ext_rdata_even_neg_q;
+        direct_ext_rdata_odd_q <= ext_ram_data;
+    end else begin
+        direct_ext_rdata_even_q <= ext_ram_data;
+        direct_ext_rdata_odd_q <= ext_ram_data;
+    end
+end
+`else
+always @(negedge aclk) begin
+    if (fast_read_active) begin
+        direct_ext_rdata_even_neg_q <= ext_ram_data;
+    end
+end
+
+always @(posedge aclk) begin
+    if (fast_read_active) begin
+        direct_ext_rdata_even_q <= direct_ext_rdata_even_neg_q;
+        direct_ext_rdata_odd_q <= ext_ram_data;
+    end else begin
+        direct_ext_rdata_even_q <= ext_ram_data;
+        direct_ext_rdata_odd_q <= ext_ram_data;
+    end
+end
+`endif
+assign direct_ext_rdata_even = direct_ext_rdata_even_q;
+assign direct_ext_rdata_odd = direct_ext_rdata_odd_q;
 
 endmodule
