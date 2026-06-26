@@ -86,10 +86,6 @@ module matmul_axi_slave (
     output             direct_ext_we_n,
     output reg [31:0]  direct_ext_wdata,
     input      [31:0]  direct_ext_rdata,
-    output reg         direct_ext_fast_read,
-    output reg [19:0]  direct_ext_addr_fall,
-    input      [31:0]  direct_ext_rdata_even,
-    input      [31:0]  direct_ext_rdata_odd,
 
     output reg         marker_uart_active,
     output reg         marker_uart_tx
@@ -159,9 +155,6 @@ reg [31:0] dma_read_group;
 reg [31:0] dma_write_group;
 reg [5:0]  dma_read_word;
 reg [5:0]  dma_write_word;
-reg [5:0]  dma_fast_issue_word;
-reg [5:0]  dma_fast_consume_word;
-reg        dma_fast_wait;
 reg [31:0] dma_write_data;
 reg        compute_input_slot;
 reg        dma_read_slot;
@@ -252,12 +245,7 @@ wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[7] ? (shifted_multiplicand << 7) : 66'b0)
     + (multiplier_reg[8] ? (shifted_multiplicand << 8) : 66'b0)
     + (multiplier_reg[9] ? (shifted_multiplicand << 9) : 66'b0)
-    + (multiplier_reg[10] ? (shifted_multiplicand << 10) : 66'b0)
-    + (multiplier_reg[11] ? (shifted_multiplicand << 11) : 66'b0)
-    + (multiplier_reg[12] ? (shifted_multiplicand << 12) : 66'b0)
-    + (multiplier_reg[13] ? (shifted_multiplicand << 13) : 66'b0)
-    + (multiplier_reg[14] ? (shifted_multiplicand << 14) : 66'b0)
-    + (multiplier_reg[15] ? (shifted_multiplicand << 15) : 66'b0);
+    + (multiplier_reg[10] ? (shifted_multiplicand << 10) : 66'b0);
 wire [65:0] sum_acc_finish = sum_acc + product_acc;
 wire [65:0] shifted_multiplicand1 = {34'b0, multiplicand_reg1} << mul_bit;
 wire [65:0] product_acc_next1 = product_acc1
@@ -271,12 +259,7 @@ wire [65:0] product_acc_next1 = product_acc1
     + (multiplier_reg1[7] ? (shifted_multiplicand1 << 7) : 66'b0)
     + (multiplier_reg1[8] ? (shifted_multiplicand1 << 8) : 66'b0)
     + (multiplier_reg1[9] ? (shifted_multiplicand1 << 9) : 66'b0)
-    + (multiplier_reg1[10] ? (shifted_multiplicand1 << 10) : 66'b0)
-    + (multiplier_reg1[11] ? (shifted_multiplicand1 << 11) : 66'b0)
-    + (multiplier_reg1[12] ? (shifted_multiplicand1 << 12) : 66'b0)
-    + (multiplier_reg1[13] ? (shifted_multiplicand1 << 13) : 66'b0)
-    + (multiplier_reg1[14] ? (shifted_multiplicand1 << 14) : 66'b0)
-    + (multiplier_reg1[15] ? (shifted_multiplicand1 << 15) : 66'b0);
+    + (multiplier_reg1[10] ? (shifted_multiplicand1 << 10) : 66'b0);
 wire [65:0] sum_acc_finish1 = sum_acc1 + product_acc1;
 wire [65:0] shifted_multiplicand2 = {34'b0, multiplicand_reg2} << mul_bit;
 wire [65:0] product_acc_next2 = product_acc2
@@ -290,12 +273,7 @@ wire [65:0] product_acc_next2 = product_acc2
     + (multiplier_reg2[7] ? (shifted_multiplicand2 << 7) : 66'b0)
     + (multiplier_reg2[8] ? (shifted_multiplicand2 << 8) : 66'b0)
     + (multiplier_reg2[9] ? (shifted_multiplicand2 << 9) : 66'b0)
-    + (multiplier_reg2[10] ? (shifted_multiplicand2 << 10) : 66'b0)
-    + (multiplier_reg2[11] ? (shifted_multiplicand2 << 11) : 66'b0)
-    + (multiplier_reg2[12] ? (shifted_multiplicand2 << 12) : 66'b0)
-    + (multiplier_reg2[13] ? (shifted_multiplicand2 << 13) : 66'b0)
-    + (multiplier_reg2[14] ? (shifted_multiplicand2 << 14) : 66'b0)
-    + (multiplier_reg2[15] ? (shifted_multiplicand2 << 15) : 66'b0);
+    + (multiplier_reg2[10] ? (shifted_multiplicand2 << 10) : 66'b0);
 wire [65:0] sum_acc_finish2 = sum_acc2 + product_acc2;
 wire [65:0] shifted_multiplicand3 = {34'b0, multiplicand_reg3} << mul_bit;
 wire [65:0] product_acc_next3 = product_acc3
@@ -309,12 +287,7 @@ wire [65:0] product_acc_next3 = product_acc3
     + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0)
     + (multiplier_reg3[8] ? (shifted_multiplicand3 << 8) : 66'b0)
     + (multiplier_reg3[9] ? (shifted_multiplicand3 << 9) : 66'b0)
-    + (multiplier_reg3[10] ? (shifted_multiplicand3 << 10) : 66'b0)
-    + (multiplier_reg3[11] ? (shifted_multiplicand3 << 11) : 66'b0)
-    + (multiplier_reg3[12] ? (shifted_multiplicand3 << 12) : 66'b0)
-    + (multiplier_reg3[13] ? (shifted_multiplicand3 << 13) : 66'b0)
-    + (multiplier_reg3[14] ? (shifted_multiplicand3 << 14) : 66'b0)
-    + (multiplier_reg3[15] ? (shifted_multiplicand3 << 15) : 66'b0);
+    + (multiplier_reg3[10] ? (shifted_multiplicand3 << 10) : 66'b0);
 wire [65:0] sum_acc_finish3 = sum_acc3 + product_acc3;
 wire [65:0] shifted_multiplicand4 = {34'b0, multiplicand_reg4} << mul_bit;
 wire [65:0] product_acc_next4 = product_acc4
@@ -328,12 +301,7 @@ wire [65:0] product_acc_next4 = product_acc4
     + (multiplier_reg4[7] ? (shifted_multiplicand4 << 7) : 66'b0)
     + (multiplier_reg4[8] ? (shifted_multiplicand4 << 8) : 66'b0)
     + (multiplier_reg4[9] ? (shifted_multiplicand4 << 9) : 66'b0)
-    + (multiplier_reg4[10] ? (shifted_multiplicand4 << 10) : 66'b0)
-    + (multiplier_reg4[11] ? (shifted_multiplicand4 << 11) : 66'b0)
-    + (multiplier_reg4[12] ? (shifted_multiplicand4 << 12) : 66'b0)
-    + (multiplier_reg4[13] ? (shifted_multiplicand4 << 13) : 66'b0)
-    + (multiplier_reg4[14] ? (shifted_multiplicand4 << 14) : 66'b0)
-    + (multiplier_reg4[15] ? (shifted_multiplicand4 << 15) : 66'b0);
+    + (multiplier_reg4[10] ? (shifted_multiplicand4 << 10) : 66'b0);
 wire [65:0] sum_acc_finish4 = sum_acc4 + product_acc4;
 wire [65:0] shifted_multiplicand5 = {34'b0, multiplicand_reg5} << mul_bit;
 wire [65:0] product_acc_next5 = product_acc5
@@ -347,12 +315,7 @@ wire [65:0] product_acc_next5 = product_acc5
     + (multiplier_reg5[7] ? (shifted_multiplicand5 << 7) : 66'b0)
     + (multiplier_reg5[8] ? (shifted_multiplicand5 << 8) : 66'b0)
     + (multiplier_reg5[9] ? (shifted_multiplicand5 << 9) : 66'b0)
-    + (multiplier_reg5[10] ? (shifted_multiplicand5 << 10) : 66'b0)
-    + (multiplier_reg5[11] ? (shifted_multiplicand5 << 11) : 66'b0)
-    + (multiplier_reg5[12] ? (shifted_multiplicand5 << 12) : 66'b0)
-    + (multiplier_reg5[13] ? (shifted_multiplicand5 << 13) : 66'b0)
-    + (multiplier_reg5[14] ? (shifted_multiplicand5 << 14) : 66'b0)
-    + (multiplier_reg5[15] ? (shifted_multiplicand5 << 15) : 66'b0);
+    + (multiplier_reg5[10] ? (shifted_multiplicand5 << 10) : 66'b0);
 wire [65:0] sum_acc_finish5 = sum_acc5 + product_acc5;
 wire [65:0] shifted_multiplicand6 = {34'b0, multiplicand_reg6} << mul_bit;
 wire [65:0] product_acc_next6 = product_acc6
@@ -366,12 +329,7 @@ wire [65:0] product_acc_next6 = product_acc6
     + (multiplier_reg6[7] ? (shifted_multiplicand6 << 7) : 66'b0)
     + (multiplier_reg6[8] ? (shifted_multiplicand6 << 8) : 66'b0)
     + (multiplier_reg6[9] ? (shifted_multiplicand6 << 9) : 66'b0)
-    + (multiplier_reg6[10] ? (shifted_multiplicand6 << 10) : 66'b0)
-    + (multiplier_reg6[11] ? (shifted_multiplicand6 << 11) : 66'b0)
-    + (multiplier_reg6[12] ? (shifted_multiplicand6 << 12) : 66'b0)
-    + (multiplier_reg6[13] ? (shifted_multiplicand6 << 13) : 66'b0)
-    + (multiplier_reg6[14] ? (shifted_multiplicand6 << 14) : 66'b0)
-    + (multiplier_reg6[15] ? (shifted_multiplicand6 << 15) : 66'b0);
+    + (multiplier_reg6[10] ? (shifted_multiplicand6 << 10) : 66'b0);
 wire [65:0] sum_acc_finish6 = sum_acc6 + product_acc6;
 wire [65:0] shifted_multiplicand7 = {34'b0, multiplicand_reg7} << mul_bit;
 wire [65:0] product_acc_next7 = product_acc7
@@ -385,16 +343,9 @@ wire [65:0] product_acc_next7 = product_acc7
     + (multiplier_reg7[7] ? (shifted_multiplicand7 << 7) : 66'b0)
     + (multiplier_reg7[8] ? (shifted_multiplicand7 << 8) : 66'b0)
     + (multiplier_reg7[9] ? (shifted_multiplicand7 << 9) : 66'b0)
-    + (multiplier_reg7[10] ? (shifted_multiplicand7 << 10) : 66'b0)
-    + (multiplier_reg7[11] ? (shifted_multiplicand7 << 11) : 66'b0)
-    + (multiplier_reg7[12] ? (shifted_multiplicand7 << 12) : 66'b0)
-    + (multiplier_reg7[13] ? (shifted_multiplicand7 << 13) : 66'b0)
-    + (multiplier_reg7[14] ? (shifted_multiplicand7 << 14) : 66'b0)
-    + (multiplier_reg7[15] ? (shifted_multiplicand7 << 15) : 66'b0);
+    + (multiplier_reg7[10] ? (shifted_multiplicand7 << 10) : 66'b0);
 wire [65:0] sum_acc_finish7 = sum_acc7 + product_acc7;
 wire [31:0] dma_src_addr = src_base_reg + (dma_read_group << 7) + {24'b0, dma_read_word, 2'b00};
-wire [31:0] dma_src_word_base = {12'b0, src_base_reg[21:2]} + (dma_read_group << 5);
-wire [31:0] dma_fast_issue_addr = dma_src_word_base + {26'b0, dma_fast_issue_word};
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_write_group << 7) + (dma_write_group << 6) + {24'b0, dma_write_word, 2'b00};
 wire        dma_write_last_group = (dma_write_group == (group_count_reg - 32'd1));
 wire        dma_last_write = (dma_write_word == 6'd47);
@@ -627,32 +578,6 @@ task start_compute8;
     end
 endtask
 
-task store_read_pair;
-    input        slot;
-    input [5:0]  word;
-    input [31:0] data_even;
-    input [31:0] data_odd;
-    begin
-        if (slot) begin
-            if (word < 6'd16) begin
-                a_regs_alt[word[3:0]] <= data_even;
-                a_regs_alt[word[3:0] + 4'd1] <= data_odd;
-            end else begin
-                b_regs_alt[word[3:0]] <= data_even;
-                b_regs_alt[word[3:0] + 4'd1] <= data_odd;
-            end
-        end else begin
-            if (word < 6'd16) begin
-                a_regs[word[3:0]] <= data_even;
-                a_regs[word[3:0] + 4'd1] <= data_odd;
-            end else begin
-                b_regs[word[3:0]] <= data_even;
-                b_regs[word[3:0] + 4'd1] <= data_odd;
-            end
-        end
-    end
-endtask
-
 task start_dma_batch;
     input [31:0] src_base;
     input [31:0] dst_base;
@@ -673,9 +598,6 @@ task start_dma_batch;
         dma_write_group <= 32'b0;
         dma_read_word <= 6'b0;
         dma_write_word <= 6'b0;
-        dma_fast_issue_word <= 6'b0;
-        dma_fast_consume_word <= 6'b0;
-        dma_fast_wait <= 1'b0;
         dma_write_data <= 32'b0;
         compute_input_slot <= 1'b0;
         dma_read_slot <= 1'b0;
@@ -701,8 +623,6 @@ task start_dma_batch;
         direct_read_active <= 1'b0;
         direct_write_strobe <= 1'b0;
         direct_ext_addr <= src_base[21:2];
-        direct_ext_addr_fall <= src_base[21:2] + 20'd1;
-        direct_ext_fast_read <= 1'b0;
         direct_ext_be_n <= 4'b0000;
         direct_ext_wdata <= 32'b0;
         crc_acc <= 32'hffff_ffff;
@@ -866,9 +786,6 @@ always @(posedge clk or negedge resetn) begin
         dma_write_group <= 32'b0;
         dma_read_word  <= 6'b0;
         dma_write_word <= 6'b0;
-        dma_fast_issue_word <= 6'b0;
-        dma_fast_consume_word <= 6'b0;
-        dma_fast_wait <= 1'b0;
         dma_write_data <= 32'b0;
         compute_input_slot <= 1'b0;
         dma_read_slot <= 1'b0;
@@ -894,8 +811,6 @@ always @(posedge clk or negedge resetn) begin
         direct_read_active <= 1'b0;
         direct_write_strobe <= 1'b0;
         direct_ext_addr <= 20'b0;
-        direct_ext_addr_fall <= 20'b0;
-        direct_ext_fast_read <= 1'b0;
         direct_ext_be_n <= 4'b1111;
         direct_ext_wdata <= 32'b0;
         auto_start_pending <= 1'b1;
@@ -1075,8 +990,6 @@ always @(posedge clk or negedge resetn) begin
                     direct_read_active <= 1'b0;
                     direct_write_strobe <= 1'b0;
                     direct_ext_addr <= 20'b0;
-                    direct_ext_addr_fall <= 20'b0;
-                    direct_ext_fast_read <= 1'b0;
                     direct_ext_be_n <= 4'b1111;
                     direct_ext_wdata <= 32'b0;
                     crc_acc <= 32'hffff_ffff;
@@ -1330,7 +1243,7 @@ always @(posedge clk or negedge resetn) begin
                         load_lanes4(compute_input_slot, calc_row, calc_k + 2'd1);
                     end
                 end
-            end else if (mul_bit == 6'd16) begin
+            end else if (mul_bit == 6'd22) begin
                 mul_finish <= 1'b1;
                 product_acc <= product_acc_next;
                 product_acc1 <= product_acc_next1;
@@ -1341,23 +1254,23 @@ always @(posedge clk or negedge resetn) begin
                 product_acc6 <= product_acc_next6;
                 product_acc7 <= product_acc_next7;
             end else begin
-                mul_bit <= mul_bit + 6'd16;
+                mul_bit <= mul_bit + 6'd11;
                 product_acc <= product_acc_next;
-                multiplier_reg <= {16'b0, multiplier_reg[31:16]};
+                multiplier_reg <= {11'b0, multiplier_reg[31:11]};
                 product_acc1 <= product_acc_next1;
-                multiplier_reg1 <= {16'b0, multiplier_reg1[31:16]};
+                multiplier_reg1 <= {11'b0, multiplier_reg1[31:11]};
                 product_acc2 <= product_acc_next2;
-                multiplier_reg2 <= {16'b0, multiplier_reg2[31:16]};
+                multiplier_reg2 <= {11'b0, multiplier_reg2[31:11]};
                 product_acc3 <= product_acc_next3;
-                multiplier_reg3 <= {16'b0, multiplier_reg3[31:16]};
+                multiplier_reg3 <= {11'b0, multiplier_reg3[31:11]};
                 product_acc4 <= product_acc_next4;
-                multiplier_reg4 <= {16'b0, multiplier_reg4[31:16]};
+                multiplier_reg4 <= {11'b0, multiplier_reg4[31:11]};
                 product_acc5 <= product_acc_next5;
-                multiplier_reg5 <= {16'b0, multiplier_reg5[31:16]};
+                multiplier_reg5 <= {11'b0, multiplier_reg5[31:11]};
                 product_acc6 <= product_acc_next6;
-                multiplier_reg6 <= {16'b0, multiplier_reg6[31:16]};
+                multiplier_reg6 <= {11'b0, multiplier_reg6[31:11]};
                 product_acc7 <= product_acc_next7;
-                multiplier_reg7 <= {16'b0, multiplier_reg7[31:16]};
+                multiplier_reg7 <= {11'b0, multiplier_reg7[31:11]};
             end
         end
 
@@ -1398,28 +1311,28 @@ always @(posedge clk or negedge resetn) begin
                 DMA_READ_AR: begin
                     direct_read_active <= 1'b1;
                     direct_write_strobe <= 1'b0;
-                    direct_ext_fast_read <= 1'b1;
                     direct_ext_be_n <= 4'b0000;
                     direct_ext_addr <= dma_src_addr[21:2];
-                    direct_ext_addr_fall <= dma_src_addr[21:2] + 20'd1;
-                    dma_fast_issue_word <= 6'd2;
-                    dma_fast_consume_word <= 6'b0;
-                    dma_fast_wait <= 1'b1;
                     dma_state <= DMA_READ_R;
                 end
 
                 DMA_READ_R: begin
-                    if (!dma_fast_wait) begin
-                        store_read_pair(dma_read_slot, dma_fast_consume_word,
-                                        direct_ext_rdata_even, direct_ext_rdata_odd);
+                    if (dma_read_slot) begin
+                        if (dma_read_word < 6'd16) begin
+                            a_regs_alt[dma_read_word[3:0]] <= direct_ext_rdata;
+                        end else begin
+                            b_regs_alt[dma_read_word[3:0]] <= direct_ext_rdata;
+                        end
                     end else begin
-                        dma_fast_wait <= 1'b0;
+                        if (dma_read_word < 6'd16) begin
+                            a_regs[dma_read_word[3:0]] <= direct_ext_rdata;
+                        end else begin
+                            b_regs[dma_read_word[3:0]] <= direct_ext_rdata;
+                        end
                     end
 
-                    if (!dma_fast_wait && (dma_fast_consume_word == 6'd30)) begin
+                    if (dma_read_word == 6'd31) begin
                         direct_read_active <= 1'b0;
-                        direct_ext_fast_read <= 1'b0;
-                        direct_ext_addr_fall <= 20'b0;
                         if (compute_done_pending
                             && (dma_read_group == (compute_done_group + 32'd1))
                             && !crc_pending_valid) begin
@@ -1437,14 +1350,8 @@ always @(posedge clk or negedge resetn) begin
                             dma_state <= DMA_COMPUTE;
                         end
                     end else begin
-                        if (!dma_fast_wait) begin
-                            dma_fast_consume_word <= dma_fast_consume_word + 6'd2;
-                        end
-                        if (dma_fast_issue_word < 6'd32) begin
-                            direct_ext_addr <= dma_fast_issue_addr[19:0];
-                            direct_ext_addr_fall <= dma_fast_issue_addr[19:0] + 20'd1;
-                            dma_fast_issue_word <= dma_fast_issue_word + 6'd2;
-                        end
+                        dma_read_word <= dma_read_word + 6'd1;
+                        direct_ext_addr <= dma_src_addr[21:2] + 20'd1;
                         dma_state <= DMA_READ_R;
                     end
                 end
@@ -1476,7 +1383,6 @@ always @(posedge clk or negedge resetn) begin
 
                 DMA_WRITE_AW: begin
                     direct_read_active <= 1'b0;
-                    direct_ext_fast_read <= 1'b0;
                     direct_write_strobe <= 1'b0;
                     direct_ext_be_n <= 4'b1111;
                     dma_state <= DMA_COMPUTE;
@@ -1484,7 +1390,6 @@ always @(posedge clk or negedge resetn) begin
 
                 DMA_WRITE_W: begin
                     direct_read_active <= 1'b0;
-                    direct_ext_fast_read <= 1'b0;
                     direct_write_strobe <= 1'b0;
                     direct_ext_be_n <= 4'b1111;
                     dma_state <= DMA_COMPUTE;
@@ -1492,7 +1397,6 @@ always @(posedge clk or negedge resetn) begin
 
                 DMA_WRITE_B: begin
                     direct_read_active <= 1'b0;
-                    direct_ext_fast_read <= 1'b0;
                     direct_write_strobe <= 1'b0;
                     direct_ext_be_n <= 4'b1111;
                     dma_state <= DMA_COMPUTE;
