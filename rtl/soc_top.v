@@ -310,8 +310,10 @@ wire uart0_dsr_i ;
 wire uart0_dcd_i ;
 wire uart0_dtr_o ;
 wire uart0_ri_i  ;
+wire matmul_marker_uart_active;
+wire matmul_marker_uart_tx;
 assign     UART_RX     = uart0_rxd_oe ? 1'bz : uart0_rxd_o ;
-assign     UART_TX     = uart0_txd_oe ? 1'bz : uart0_txd_o ;
+assign     UART_TX     = matmul_marker_uart_active ? matmul_marker_uart_tx : (uart0_txd_oe ? 1'bz : uart0_txd_o) ;
 assign     UART_RTS    = uart0_rts_o ;
 assign     UART_DTR    = uart0_dtr_o ;
 assign     uart0_txd_i = UART_TX;
@@ -912,7 +914,9 @@ matmul_axi_slave u_matmul_axi_slave (
     .direct_ext_oe_n   (matmul_direct_ext_oe_n),
     .direct_ext_we_n   (matmul_direct_ext_we_n),
     .direct_ext_wdata  (matmul_direct_ext_wdata),
-    .direct_ext_rdata  (matmul_direct_ext_rdata)
+    .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .marker_uart_active (matmul_marker_uart_active),
+    .marker_uart_tx     (matmul_marker_uart_tx)
 );
 
 AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
