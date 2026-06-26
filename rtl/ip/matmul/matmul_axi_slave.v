@@ -1144,7 +1144,14 @@ always @(posedge clk or negedge resetn) begin
 
                     if (dma_read_word == 6'd31) begin
                         direct_read_active <= 1'b0;
-                        if (compute_active || compute_done_pending || crc_stream_active) begin
+                        if (compute_done_pending
+                            && (dma_read_group == (compute_done_group + 32'd1))
+                            && !crc_pending_valid) begin
+                            compute_done_pending <= 1'b0;
+                            input_ready_valid <= 1'b0;
+                            start_compute8(dma_read_slot, ~compute_done_slot, dma_read_group);
+                            dma_state <= DMA_COMPUTE;
+                        end else if (compute_active || compute_done_pending || crc_stream_active) begin
                             input_ready_valid <= 1'b1;
                             input_ready_slot <= dma_read_slot;
                             input_ready_group <= dma_read_group;
