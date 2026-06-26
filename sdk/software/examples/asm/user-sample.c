@@ -9,7 +9,8 @@
 #define C_WORDS_PER_GROUP         48u
 #define UART_REG_RBR_THR          0x0u
 #define UART_REG_LSR              0x5u
-#define UART_LSR_THRE             0x20u
+#define UART_LSR_TFE              0x20u
+#define UART_TX_FIFO_DEPTH        16u
 #define MATMUL_CTRL_OFFSET        0x00u
 #define MATMUL_STATUS_OFFSET      0x04u
 #define MATMUL_A_BASE_OFFSET      0x10u
@@ -118,30 +119,45 @@ static volatile unsigned char *uart_reg(U32 offset)
     return (volatile unsigned char *)(UART_BASE + (unsigned long)offset);
 }
 
-static int uart_tx_ready(void)
+static int uart_tx_fifo_empty(void)
 {
-    return ((*uart_reg(UART_REG_LSR)) & UART_LSR_THRE) ? 1 : 0;
+    return ((*uart_reg(UART_REG_LSR)) & UART_LSR_TFE) ? 1 : 0;
+}
+
+static void uart_wait_tx_fifo_empty(void)
+{
+    while (!uart_tx_fifo_empty()) {
+    }
+}
+
+static void uart_write_raw(char ch)
+{
+    *uart_reg(UART_REG_RBR_THR) = (unsigned char)ch;
 }
 
 static void uart_putchar_blocking(char ch)
 {
-    while (!uart_tx_ready()) {
-    }
-    *uart_reg(UART_REG_RBR_THR) = (unsigned char)ch;
+    uart_wait_tx_fifo_empty();
+    uart_write_raw(ch);
 }
 
 static void uart_puts_blocking(const char *str)
 {
+    U32 fifo_count = 0u;
+
     if (str == 0) {
         return;
     }
 
+    uart_wait_tx_fifo_empty();
     while (*str != '\0') {
-        if (*str == '\n') {
-            uart_putchar_blocking('\r');
+        if (fifo_count == UART_TX_FIFO_DEPTH) {
+            uart_wait_tx_fifo_empty();
+            fifo_count = 0u;
         }
-        uart_putchar_blocking(*str);
+        uart_write_raw(*str);
         str++;
+        fifo_count++;
     }
 }
 
@@ -155,7 +171,7 @@ static void uart_put_hex8(U32 value)
     }
 }
 
-static void make_crc32_line(char line[25], U32 value)
+static void make_crc32_done_lines(char line[36], U32 value)
 {
     int i;
 
@@ -179,7 +195,19 @@ static void make_crc32_line(char line[25], U32 value)
     }
 
     line[21] = '\n';
-    line[22] = '\0';
+    line[22] = 'M';
+    line[23] = 'A';
+    line[24] = 'T';
+    line[25] = 'M';
+    line[26] = 'U';
+    line[27] = 'L';
+    line[28] = '_';
+    line[29] = 'D';
+    line[30] = 'O';
+    line[31] = 'N';
+    line[32] = 'E';
+    line[33] = '\n';
+    line[34] = '\0';
 }
 
 static void uart_put_u32(U32 value)
@@ -252,7 +280,7 @@ static void fail(U32 code, U32 detail)
 int main(void)
 {
     U32 dst_base_addr = EXTRAM_CACHED_BASE_ADDR + GROUP_COUNT * AB_WORDS_PER_GROUP * 4u;
-    char crc32_line[25];
+    char done_lines[36];
     U32 crc32;
     U32 status;
 
@@ -284,9 +312,8 @@ int main(void)
 
     setLedPin(0x007fu);
     crc32 = MATMUL_CRC32_DIRECT;
-    make_crc32_line(crc32_line, crc32);
-    uart_puts_blocking(crc32_line);
-    uart_puts_blocking("MATMUL_DONE\n");
+    make_crc32_done_lines(done_lines, crc32);
+    uart_puts_blocking(done_lines);
     setLedPin(0x00ffu);
 
     while (1) {
