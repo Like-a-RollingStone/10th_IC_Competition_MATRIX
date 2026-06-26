@@ -85,7 +85,10 @@ module matmul_axi_slave (
     output             direct_ext_oe_n,
     output             direct_ext_we_n,
     output reg [31:0]  direct_ext_wdata,
-    input      [31:0]  direct_ext_rdata
+    input      [31:0]  direct_ext_rdata,
+
+    output reg         marker_uart_active,
+    output reg         marker_uart_tx
 );
 
 localparam [11:0] CTRL_ADDR    = 12'h000;
@@ -114,6 +117,11 @@ localparam DMA_COMPUTE       = 3'd3;
 localparam DMA_WRITE_AW      = 3'd4;
 localparam DMA_WRITE_W       = 3'd5;
 localparam DMA_WRITE_B       = 3'd6;
+localparam AUTO_SRC_BASE     = 32'h1c40_0000;
+localparam AUTO_GROUP_COUNT  = 32'd5000;
+localparam UART_BAUD_DIV     = 16'd434;
+localparam MARKER_PREFIX_LEN = 6'd26;
+localparam MARKER_SUFFIX_LEN = 6'd21;
 
 integer i;
 
@@ -171,6 +179,16 @@ reg [5:0]  crc_stream_word;
 reg        direct_active_reg;
 reg        direct_read_active;
 reg        direct_write_strobe;
+reg        auto_start_pending;
+reg [31:0] auto_group_count;
+reg        marker_prefix_done;
+reg        marker_suffix_all_sent;
+reg        marker_tx_busy;
+reg [9:0]  marker_tx_shift;
+reg [3:0]  marker_tx_bit;
+reg [15:0] marker_baud_count;
+reg [5:0]  marker_prefix_index;
+reg [5:0]  marker_suffix_index;
 reg [1:0]  calc_row;
 reg [1:0]  calc_col;
 reg [1:0]  calc_k;
@@ -342,6 +360,16 @@ wire        crc_stream_last_pair = (crc_stream_word == 6'd46);
 wire        crc_stream_last_group = (crc_stream_group == (group_count_reg - 32'd1));
 wire        direct_ext_write_gate = direct_active_reg && direct_write_strobe;
 wire        can_prefetch_next = compute_active && ((dma_group + 32'd1) < group_count_reg) && (!input_ready_valid);
+
+`ifdef MODELSIM_BUILD
+integer sim_auto_groups;
+initial begin
+    sim_auto_groups = 5000;
+    if (!$value$plusargs("GROUPS=%d", sim_auto_groups)) begin
+        sim_auto_groups = 5000;
+    end
+end
+`endif
 
 assign direct_ext_active = direct_active_reg;
 assign direct_ext_ce_n = ~direct_active_reg;
@@ -550,6 +578,148 @@ task start_compute8;
     end
 endtask
 
+task start_dma_batch;
+    input [31:0] src_base;
+    input [31:0] dst_base;
+    input [31:0] group_count;
+    begin
+        busy <= 1'b1;
+        done <= 1'b0;
+        error <= 1'b0;
+        ctrl_shadow <= 32'h0000_0001;
+        src_base_reg <= src_base;
+        dst_base_reg <= dst_base;
+        group_count_reg <= group_count;
+        compute_active <= 1'b0;
+        dma_active <= 1'b1;
+        dma_state <= DMA_READ_AR;
+        dma_group <= 32'b0;
+        dma_read_group <= 32'b0;
+        dma_write_group <= 32'b0;
+        dma_read_word <= 6'b0;
+        dma_write_word <= 6'b0;
+        dma_write_data <= 32'b0;
+        compute_input_slot <= 1'b0;
+        dma_read_slot <= 1'b0;
+        compute_slot <= 1'b0;
+        dma_write_slot <= 1'b0;
+        input_ready_valid <= 1'b0;
+        input_ready_slot <= 1'b0;
+        input_ready_group <= 32'b0;
+        pending_write_valid <= 1'b0;
+        pending_write_slot <= 1'b0;
+        pending_write_group <= 32'b0;
+        compute_done_pending <= 1'b0;
+        compute_done_slot <= 1'b0;
+        compute_done_group <= 32'b0;
+        crc_pending_valid <= 1'b0;
+        crc_pending_slot <= 1'b0;
+        crc_pending_group <= 32'b0;
+        crc_stream_active <= 1'b0;
+        crc_stream_slot <= 1'b0;
+        crc_stream_group <= 32'b0;
+        crc_stream_word <= 6'b0;
+        direct_active_reg <= 1'b1;
+        direct_read_active <= 1'b0;
+        direct_write_strobe <= 1'b0;
+        direct_ext_addr <= src_base[21:2];
+        direct_ext_be_n <= 4'b0000;
+        direct_ext_wdata <= 32'b0;
+        crc_acc <= 32'hffff_ffff;
+        crc_result_reg <= 32'b0;
+        calc_row <= 2'b0;
+        calc_col <= 2'b0;
+        calc_k   <= 2'b0;
+        mul_bit  <= 6'b0;
+        mul_finish <= 1'b0;
+        clear_lane_accs;
+    end
+endtask
+
+function [7:0] marker_prefix_char;
+    input [5:0] index;
+    begin
+        case (index)
+            6'd0:  marker_prefix_char = "M";
+            6'd1:  marker_prefix_char = "A";
+            6'd2:  marker_prefix_char = "T";
+            6'd3:  marker_prefix_char = "M";
+            6'd4:  marker_prefix_char = "U";
+            6'd5:  marker_prefix_char = "L";
+            6'd6:  marker_prefix_char = "_";
+            6'd7:  marker_prefix_char = "S";
+            6'd8:  marker_prefix_char = "T";
+            6'd9:  marker_prefix_char = "A";
+            6'd10: marker_prefix_char = "R";
+            6'd11: marker_prefix_char = "T";
+            6'd12: marker_prefix_char = 8'h0a;
+            6'd13: marker_prefix_char = "M";
+            6'd14: marker_prefix_char = "A";
+            6'd15: marker_prefix_char = "T";
+            6'd16: marker_prefix_char = "M";
+            6'd17: marker_prefix_char = "U";
+            6'd18: marker_prefix_char = "L";
+            6'd19: marker_prefix_char = "_";
+            6'd20: marker_prefix_char = "C";
+            6'd21: marker_prefix_char = "R";
+            6'd22: marker_prefix_char = "C";
+            6'd23: marker_prefix_char = "3";
+            6'd24: marker_prefix_char = "2";
+            6'd25: marker_prefix_char = "=";
+            default: marker_prefix_char = 8'h00;
+        endcase
+    end
+endfunction
+
+function [7:0] marker_hex_char;
+    input [3:0] value;
+    begin
+        marker_hex_char = (value < 4'd10) ? (8'h30 + {4'b0, value}) : (8'h61 + {4'b0, (value - 4'd10)});
+    end
+endfunction
+
+function [7:0] marker_suffix_char;
+    input [5:0] index;
+    input [31:0] crc_value;
+    begin
+        case (index)
+            6'd0:  marker_suffix_char = marker_hex_char(crc_value[31:28]);
+            6'd1:  marker_suffix_char = marker_hex_char(crc_value[27:24]);
+            6'd2:  marker_suffix_char = marker_hex_char(crc_value[23:20]);
+            6'd3:  marker_suffix_char = marker_hex_char(crc_value[19:16]);
+            6'd4:  marker_suffix_char = marker_hex_char(crc_value[15:12]);
+            6'd5:  marker_suffix_char = marker_hex_char(crc_value[11:8]);
+            6'd6:  marker_suffix_char = marker_hex_char(crc_value[7:4]);
+            6'd7:  marker_suffix_char = marker_hex_char(crc_value[3:0]);
+            6'd8:  marker_suffix_char = 8'h0a;
+            6'd9:  marker_suffix_char = "M";
+            6'd10: marker_suffix_char = "A";
+            6'd11: marker_suffix_char = "T";
+            6'd12: marker_suffix_char = "M";
+            6'd13: marker_suffix_char = "U";
+            6'd14: marker_suffix_char = "L";
+            6'd15: marker_suffix_char = "_";
+            6'd16: marker_suffix_char = "D";
+            6'd17: marker_suffix_char = "O";
+            6'd18: marker_suffix_char = "N";
+            6'd19: marker_suffix_char = "E";
+            6'd20: marker_suffix_char = 8'h0a;
+            default: marker_suffix_char = 8'h00;
+        endcase
+    end
+endfunction
+
+task marker_start_char;
+    input [7:0] ch;
+    begin
+        marker_tx_shift <= {1'b1, ch, 1'b0};
+        marker_tx_bit <= 4'b0;
+        marker_baud_count <= UART_BAUD_DIV - 16'd1;
+        marker_uart_tx <= 1'b0;
+        marker_tx_busy <= 1'b1;
+    end
+endtask
+
 always @(*) begin
     reg_rdata = 32'b0;
 
@@ -643,6 +813,22 @@ always @(posedge clk or negedge resetn) begin
         direct_ext_addr <= 20'b0;
         direct_ext_be_n <= 4'b1111;
         direct_ext_wdata <= 32'b0;
+        auto_start_pending <= 1'b1;
+`ifdef MODELSIM_BUILD
+        auto_group_count <= sim_auto_groups;
+`else
+        auto_group_count <= AUTO_GROUP_COUNT;
+`endif
+        marker_uart_active <= 1'b1;
+        marker_uart_tx <= 1'b1;
+        marker_prefix_done <= 1'b0;
+        marker_suffix_all_sent <= 1'b0;
+        marker_tx_busy <= 1'b0;
+        marker_tx_shift <= 10'h3ff;
+        marker_tx_bit <= 4'b0;
+        marker_baud_count <= 16'b0;
+        marker_prefix_index <= 6'b0;
+        marker_suffix_index <= 6'b0;
         calc_row       <= 2'b0;
         calc_col       <= 2'b0;
         calc_k         <= 2'b0;
@@ -694,6 +880,44 @@ always @(posedge clk or negedge resetn) begin
         s_awready <= (!aw_pending) && (!s_bvalid);
         s_wready  <= aw_pending && (!s_bvalid);
         s_arready <= !s_rvalid;
+
+        if (auto_start_pending) begin
+            auto_start_pending <= 1'b0;
+            start_dma_batch(AUTO_SRC_BASE, AUTO_SRC_BASE + (auto_group_count << 7), auto_group_count);
+        end
+
+        if (marker_uart_active) begin
+            if (marker_tx_busy) begin
+                if (marker_baud_count == 16'b0) begin
+                    if (marker_tx_bit == 4'd9) begin
+                        marker_tx_busy <= 1'b0;
+                        marker_uart_tx <= 1'b1;
+                    end else begin
+                        marker_tx_bit <= marker_tx_bit + 4'd1;
+                        marker_tx_shift <= {1'b1, marker_tx_shift[9:1]};
+                        marker_uart_tx <= marker_tx_shift[1];
+                        marker_baud_count <= UART_BAUD_DIV - 16'd1;
+                    end
+                end else begin
+                    marker_baud_count <= marker_baud_count - 16'd1;
+                end
+            end else if (!marker_prefix_done) begin
+                marker_start_char(marker_prefix_char(marker_prefix_index));
+                if (marker_prefix_index == (MARKER_PREFIX_LEN - 6'd1)) begin
+                    marker_prefix_done <= 1'b1;
+                end
+                marker_prefix_index <= marker_prefix_index + 6'd1;
+            end else if (done && !marker_suffix_all_sent) begin
+                marker_start_char(marker_suffix_char(marker_suffix_index, crc_result_reg));
+                if (marker_suffix_index == (MARKER_SUFFIX_LEN - 6'd1)) begin
+                    marker_suffix_all_sent <= 1'b1;
+                end
+                marker_suffix_index <= marker_suffix_index + 6'd1;
+            end else if (marker_suffix_all_sent) begin
+                marker_uart_active <= 1'b0;
+                marker_uart_tx <= 1'b1;
+            end
+        end
 
         if (s_bvalid && s_bready) begin
             s_bvalid <= 1'b0;
@@ -840,42 +1064,7 @@ always @(posedge clk or negedge resetn) begin
                         sum_acc7  <= 66'b0;
                         product_acc7 <= 66'b0;
                         if (group_count_reg != 32'b0) begin
-                            compute_active <= 1'b0;
-                            dma_active <= 1'b1;
-                            dma_state <= DMA_READ_AR;
-                            dma_group <= 32'b0;
-                            dma_read_group <= 32'b0;
-                            dma_write_group <= 32'b0;
-                            dma_read_word <= 6'b0;
-                            dma_write_word <= 6'b0;
-                            compute_input_slot <= 1'b0;
-                            dma_read_slot <= 1'b0;
-                            compute_slot <= 1'b0;
-                            dma_write_slot <= 1'b0;
-                            input_ready_valid <= 1'b0;
-                            input_ready_slot <= 1'b0;
-                            input_ready_group <= 32'b0;
-                            pending_write_valid <= 1'b0;
-                            pending_write_slot <= 1'b0;
-                            pending_write_group <= 32'b0;
-                            compute_done_pending <= 1'b0;
-                            compute_done_slot <= 1'b0;
-                            compute_done_group <= 32'b0;
-                            crc_pending_valid <= 1'b0;
-                            crc_pending_slot <= 1'b0;
-                            crc_pending_group <= 32'b0;
-                            crc_stream_active <= 1'b0;
-                            crc_stream_slot <= 1'b0;
-                            crc_stream_group <= 32'b0;
-                            crc_stream_word <= 6'b0;
-                            direct_active_reg <= 1'b1;
-                            direct_read_active <= 1'b0;
-                            direct_write_strobe <= 1'b0;
-                            direct_ext_addr <= src_base_reg[21:2];
-                            direct_ext_be_n <= 4'b0000;
-                            direct_ext_wdata <= 32'b0;
-                            crc_acc <= 32'hffff_ffff;
-                            crc_result_reg <= 32'b0;
+                            start_dma_batch(src_base_reg, dst_base_reg, group_count_reg);
                         end else begin
                             dma_active <= 1'b0;
                             dma_state <= DMA_IDLE;
