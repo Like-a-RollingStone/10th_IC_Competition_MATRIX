@@ -224,7 +224,10 @@ wire [65:0] product_acc_next = product_acc
     + (multiplier_reg[4] ? (shifted_multiplicand << 4) : 66'b0)
     + (multiplier_reg[5] ? (shifted_multiplicand << 5) : 66'b0)
     + (multiplier_reg[6] ? (shifted_multiplicand << 6) : 66'b0)
-    + (multiplier_reg[7] ? (shifted_multiplicand << 7) : 66'b0);
+    + (multiplier_reg[7] ? (shifted_multiplicand << 7) : 66'b0)
+    + (multiplier_reg[8] ? (shifted_multiplicand << 8) : 66'b0)
+    + (multiplier_reg[9] ? (shifted_multiplicand << 9) : 66'b0)
+    + (multiplier_reg[10] ? (shifted_multiplicand << 10) : 66'b0);
 wire [65:0] sum_acc_finish = sum_acc + product_acc;
 wire [65:0] shifted_multiplicand1 = {34'b0, multiplicand_reg1} << mul_bit;
 wire [65:0] product_acc_next1 = product_acc1
@@ -235,7 +238,10 @@ wire [65:0] product_acc_next1 = product_acc1
     + (multiplier_reg1[4] ? (shifted_multiplicand1 << 4) : 66'b0)
     + (multiplier_reg1[5] ? (shifted_multiplicand1 << 5) : 66'b0)
     + (multiplier_reg1[6] ? (shifted_multiplicand1 << 6) : 66'b0)
-    + (multiplier_reg1[7] ? (shifted_multiplicand1 << 7) : 66'b0);
+    + (multiplier_reg1[7] ? (shifted_multiplicand1 << 7) : 66'b0)
+    + (multiplier_reg1[8] ? (shifted_multiplicand1 << 8) : 66'b0)
+    + (multiplier_reg1[9] ? (shifted_multiplicand1 << 9) : 66'b0)
+    + (multiplier_reg1[10] ? (shifted_multiplicand1 << 10) : 66'b0);
 wire [65:0] sum_acc_finish1 = sum_acc1 + product_acc1;
 wire [65:0] shifted_multiplicand2 = {34'b0, multiplicand_reg2} << mul_bit;
 wire [65:0] product_acc_next2 = product_acc2
@@ -246,7 +252,10 @@ wire [65:0] product_acc_next2 = product_acc2
     + (multiplier_reg2[4] ? (shifted_multiplicand2 << 4) : 66'b0)
     + (multiplier_reg2[5] ? (shifted_multiplicand2 << 5) : 66'b0)
     + (multiplier_reg2[6] ? (shifted_multiplicand2 << 6) : 66'b0)
-    + (multiplier_reg2[7] ? (shifted_multiplicand2 << 7) : 66'b0);
+    + (multiplier_reg2[7] ? (shifted_multiplicand2 << 7) : 66'b0)
+    + (multiplier_reg2[8] ? (shifted_multiplicand2 << 8) : 66'b0)
+    + (multiplier_reg2[9] ? (shifted_multiplicand2 << 9) : 66'b0)
+    + (multiplier_reg2[10] ? (shifted_multiplicand2 << 10) : 66'b0);
 wire [65:0] sum_acc_finish2 = sum_acc2 + product_acc2;
 wire [65:0] shifted_multiplicand3 = {34'b0, multiplicand_reg3} << mul_bit;
 wire [65:0] product_acc_next3 = product_acc3
@@ -257,7 +266,10 @@ wire [65:0] product_acc_next3 = product_acc3
     + (multiplier_reg3[4] ? (shifted_multiplicand3 << 4) : 66'b0)
     + (multiplier_reg3[5] ? (shifted_multiplicand3 << 5) : 66'b0)
     + (multiplier_reg3[6] ? (shifted_multiplicand3 << 6) : 66'b0)
-    + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0);
+    + (multiplier_reg3[7] ? (shifted_multiplicand3 << 7) : 66'b0)
+    + (multiplier_reg3[8] ? (shifted_multiplicand3 << 8) : 66'b0)
+    + (multiplier_reg3[9] ? (shifted_multiplicand3 << 9) : 66'b0)
+    + (multiplier_reg3[10] ? (shifted_multiplicand3 << 10) : 66'b0);
 wire [65:0] sum_acc_finish3 = sum_acc3 + product_acc3;
 wire [65:0] shifted_multiplicand4 = {34'b0, multiplicand_reg4} << mul_bit;
 wire [65:0] product_acc_next4 = product_acc4
@@ -268,7 +280,10 @@ wire [65:0] product_acc_next4 = product_acc4
     + (multiplier_reg4[4] ? (shifted_multiplicand4 << 4) : 66'b0)
     + (multiplier_reg4[5] ? (shifted_multiplicand4 << 5) : 66'b0)
     + (multiplier_reg4[6] ? (shifted_multiplicand4 << 6) : 66'b0)
-    + (multiplier_reg4[7] ? (shifted_multiplicand4 << 7) : 66'b0);
+    + (multiplier_reg4[7] ? (shifted_multiplicand4 << 7) : 66'b0)
+    + (multiplier_reg4[8] ? (shifted_multiplicand4 << 8) : 66'b0)
+    + (multiplier_reg4[9] ? (shifted_multiplicand4 << 9) : 66'b0)
+    + (multiplier_reg4[10] ? (shifted_multiplicand4 << 10) : 66'b0);
 wire [65:0] sum_acc_finish4 = sum_acc4 + product_acc4;
 wire [65:0] shifted_multiplicand5 = {34'b0, multiplicand_reg5} << mul_bit;
 wire [65:0] product_acc_next5 = product_acc5
@@ -279,7 +294,10 @@ wire [65:0] product_acc_next5 = product_acc5
     + (multiplier_reg5[4] ? (shifted_multiplicand5 << 4) : 66'b0)
     + (multiplier_reg5[5] ? (shifted_multiplicand5 << 5) : 66'b0)
     + (multiplier_reg5[6] ? (shifted_multiplicand5 << 6) : 66'b0)
-    + (multiplier_reg5[7] ? (shifted_multiplicand5 << 7) : 66'b0);
+    + (multiplier_reg5[7] ? (shifted_multiplicand5 << 7) : 66'b0)
+    + (multiplier_reg5[8] ? (shifted_multiplicand5 << 8) : 66'b0)
+    + (multiplier_reg5[9] ? (shifted_multiplicand5 << 9) : 66'b0)
+    + (multiplier_reg5[10] ? (shifted_multiplicand5 << 10) : 66'b0);
 wire [65:0] sum_acc_finish5 = sum_acc5 + product_acc5;
 wire [65:0] shifted_multiplicand6 = {34'b0, multiplicand_reg6} << mul_bit;
 wire [65:0] product_acc_next6 = product_acc6
@@ -290,7 +308,10 @@ wire [65:0] product_acc_next6 = product_acc6
     + (multiplier_reg6[4] ? (shifted_multiplicand6 << 4) : 66'b0)
     + (multiplier_reg6[5] ? (shifted_multiplicand6 << 5) : 66'b0)
     + (multiplier_reg6[6] ? (shifted_multiplicand6 << 6) : 66'b0)
-    + (multiplier_reg6[7] ? (shifted_multiplicand6 << 7) : 66'b0);
+    + (multiplier_reg6[7] ? (shifted_multiplicand6 << 7) : 66'b0)
+    + (multiplier_reg6[8] ? (shifted_multiplicand6 << 8) : 66'b0)
+    + (multiplier_reg6[9] ? (shifted_multiplicand6 << 9) : 66'b0)
+    + (multiplier_reg6[10] ? (shifted_multiplicand6 << 10) : 66'b0);
 wire [65:0] sum_acc_finish6 = sum_acc6 + product_acc6;
 wire [65:0] shifted_multiplicand7 = {34'b0, multiplicand_reg7} << mul_bit;
 wire [65:0] product_acc_next7 = product_acc7
@@ -301,7 +322,10 @@ wire [65:0] product_acc_next7 = product_acc7
     + (multiplier_reg7[4] ? (shifted_multiplicand7 << 4) : 66'b0)
     + (multiplier_reg7[5] ? (shifted_multiplicand7 << 5) : 66'b0)
     + (multiplier_reg7[6] ? (shifted_multiplicand7 << 6) : 66'b0)
-    + (multiplier_reg7[7] ? (shifted_multiplicand7 << 7) : 66'b0);
+    + (multiplier_reg7[7] ? (shifted_multiplicand7 << 7) : 66'b0)
+    + (multiplier_reg7[8] ? (shifted_multiplicand7 << 8) : 66'b0)
+    + (multiplier_reg7[9] ? (shifted_multiplicand7 << 9) : 66'b0)
+    + (multiplier_reg7[10] ? (shifted_multiplicand7 << 10) : 66'b0);
 wire [65:0] sum_acc_finish7 = sum_acc7 + product_acc7;
 wire [31:0] dma_src_addr = src_base_reg + (dma_read_group << 7) + {24'b0, dma_read_word, 2'b00};
 wire [31:0] dma_dst_addr = dst_base_reg + (dma_write_group << 7) + (dma_write_group << 6) + {24'b0, dma_write_word, 2'b00};
@@ -1030,7 +1054,7 @@ always @(posedge clk or negedge resetn) begin
                         load_lanes4(compute_input_slot, calc_row, calc_k + 2'd1);
                     end
                 end
-            end else if (mul_bit == 6'd24) begin
+            end else if (mul_bit == 6'd22) begin
                 mul_finish <= 1'b1;
                 product_acc <= product_acc_next;
                 product_acc1 <= product_acc_next1;
@@ -1041,23 +1065,23 @@ always @(posedge clk or negedge resetn) begin
                 product_acc6 <= product_acc_next6;
                 product_acc7 <= product_acc_next7;
             end else begin
-                mul_bit <= mul_bit + 6'd8;
+                mul_bit <= mul_bit + 6'd11;
                 product_acc <= product_acc_next;
-                multiplier_reg <= {8'b0, multiplier_reg[31:8]};
+                multiplier_reg <= {11'b0, multiplier_reg[31:11]};
                 product_acc1 <= product_acc_next1;
-                multiplier_reg1 <= {8'b0, multiplier_reg1[31:8]};
+                multiplier_reg1 <= {11'b0, multiplier_reg1[31:11]};
                 product_acc2 <= product_acc_next2;
-                multiplier_reg2 <= {8'b0, multiplier_reg2[31:8]};
+                multiplier_reg2 <= {11'b0, multiplier_reg2[31:11]};
                 product_acc3 <= product_acc_next3;
-                multiplier_reg3 <= {8'b0, multiplier_reg3[31:8]};
+                multiplier_reg3 <= {11'b0, multiplier_reg3[31:11]};
                 product_acc4 <= product_acc_next4;
-                multiplier_reg4 <= {8'b0, multiplier_reg4[31:8]};
+                multiplier_reg4 <= {11'b0, multiplier_reg4[31:11]};
                 product_acc5 <= product_acc_next5;
-                multiplier_reg5 <= {8'b0, multiplier_reg5[31:8]};
+                multiplier_reg5 <= {11'b0, multiplier_reg5[31:11]};
                 product_acc6 <= product_acc_next6;
-                multiplier_reg6 <= {8'b0, multiplier_reg6[31:8]};
+                multiplier_reg6 <= {11'b0, multiplier_reg6[31:11]};
                 product_acc7 <= product_acc_next7;
-                multiplier_reg7 <= {8'b0, multiplier_reg7[31:8]};
+                multiplier_reg7 <= {11'b0, multiplier_reg7[31:11]};
             end
         end
 
