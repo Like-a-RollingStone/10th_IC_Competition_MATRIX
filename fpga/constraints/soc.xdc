@@ -230,13 +230,17 @@ set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
 create_generated_clock -name cpu_clk [get_pins pll_clk.u_clk_pll/inst/plle2_adv_inst/CLKOUT0]
 create_generated_clock -name sys_clk [get_pins pll_clk.u_clk_pll/inst/plle2_adv_inst/CLKOUT1]
 
-# The MMCM clock is derived automatically by Vivado.  Bind constraints to the
-# propagated clock on the BUFG output instead of creating a second clock object
-# whose name is not used by the downstream registers.
-set matmul_fast_clk_obj [get_clocks -quiet -of_objects \
-    [get_pins matmul_fast_clock.u_matmul_fast_bufg/O]]
+# Define the fast clock at the MMCM output where Vivado creates its derived
+# clock.  Defining it at the downstream BUFG output leaves the MMCM's automatic
+# clock as a separate object on the actual sequential endpoints.
+create_generated_clock -name matmul_fast_clk \
+    -source [get_pins matmul_fast_clock.u_matmul_fast_mmcm/CLKIN1] \
+    -multiply_by 5 -divide_by 4 \
+    [get_pins matmul_fast_clock.u_matmul_fast_mmcm/CLKOUT0]
+
+set matmul_fast_clk_obj [get_clocks -quiet matmul_fast_clk]
 if {[llength $matmul_fast_clk_obj] != 1} {
-    error "Expected exactly one propagated MATMUL fast clock at u_matmul_fast_bufg/O, got [llength $matmul_fast_clk_obj]"
+    error "Expected exactly one MATMUL fast clock, got [llength $matmul_fast_clk_obj]"
 }
 
 set_clock_groups -asynchronous \
