@@ -273,9 +273,8 @@ reg        fast_pair_half;
 reg        fast_read_running;
 reg        fast_stream_error;
 
-localparam FIFO_ADDR_WIDTH = 5;
+localparam FIFO_ADDR_WIDTH = 9;
 localparam FIFO_PTR_WIDTH = FIFO_ADDR_WIDTH + 1;
-(* ram_style = "block" *) reg [63:0] fast_pair_fifo [0:(1 << FIFO_ADDR_WIDTH)-1];
 reg [FIFO_PTR_WIDTH-1:0] fifo_wr_bin;
 reg [FIFO_PTR_WIDTH-1:0] fifo_wr_gray;
 reg [FIFO_PTR_WIDTH-1:0] fifo_rd_bin;
@@ -284,7 +283,7 @@ reg [FIFO_PTR_WIDTH-1:0] fifo_rd_gray;
 (* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_rd_gray_fast_ff2;
 (* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_wr_gray_sys_ff1;
 (* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_wr_gray_sys_ff2;
-reg [63:0] direct_ext_pair_data_q;
+wire [63:0] fifo_rd_data;
 reg        direct_ext_pair_valid_q;
 (* ASYNC_REG = "TRUE" *) reg fast_stream_error_sys_ff1;
 (* ASYNC_REG = "TRUE" *) reg fast_stream_error_sys_ff2;
@@ -297,6 +296,9 @@ wire fifo_full_fast = (fifo_wr_gray_next
                      == {~fifo_rd_gray_fast_ff2[FIFO_PTR_WIDTH-1:FIFO_PTR_WIDTH-2],
                          fifo_rd_gray_fast_ff2[FIFO_PTR_WIDTH-3:0]});
 wire fifo_empty_sys = (fifo_rd_gray == fifo_wr_gray_sys_ff2);
+wire fifo_wr_en = fast_read_running && !fifo_full_fast && fast_pair_half;
+wire fifo_rd_en = (!direct_ext_pair_valid_q || direct_ext_pair_ready)
+                && !fifo_empty_sys;
 wire direct_active_fast = direct_active_fast_ff2;
 wire ext_ram_direct_select = direct_active_fast;
 wire ext_ram_we_pos = ext_ram_direct_select ? 1'b1 : normal_ext_we_n;
@@ -339,9 +341,22 @@ assign ext_ram_data = ext_ram_direct_select
 assign soc_sram_rdata = choose_sram ? ext_ram_data : base_ram_data;
 
 assign direct_ext_rdata = ext_ram_data;
-assign direct_ext_pair_data = direct_ext_pair_data_q;
+assign direct_ext_pair_data = fifo_rd_data;
 assign direct_ext_pair_valid = direct_ext_pair_valid_q;
 assign direct_ext_stream_error = fast_stream_error_sys_ff2;
+
+matmul_async_pair_fifo_ram #(
+    .ADDR_WIDTH(FIFO_ADDR_WIDTH)
+) u_fast_pair_fifo_ram (
+    .wr_clk  (matmul_fast_clk),
+    .wr_en   (fifo_wr_en),
+    .wr_addr (fifo_wr_bin[FIFO_ADDR_WIDTH-1:0]),
+    .wr_data ({ext_ram_data, fast_pair_low}),
+    .rd_clk  (aclk),
+    .rd_en   (fifo_rd_en),
+    .rd_addr (fifo_rd_bin[FIFO_ADDR_WIDTH-1:0]),
+    .rd_data (fifo_rd_data)
+);
 
 always @(posedge matmul_fast_clk or negedge matmul_fast_resetn) begin
     if (!matmul_fast_resetn) begin
@@ -387,8 +402,6 @@ always @(posedge matmul_fast_clk or negedge matmul_fast_resetn) begin
                 fast_pair_low <= ext_ram_data;
                 fast_pair_half <= 1'b1;
             end else begin
-                fast_pair_fifo[fifo_wr_bin[FIFO_ADDR_WIDTH-1:0]]
-                    <= {ext_ram_data, fast_pair_low};
                 fifo_wr_bin <= fifo_wr_bin_next;
                 fifo_wr_gray <= fifo_wr_gray_next;
                 fast_pair_half <= 1'b0;
@@ -411,7 +424,6 @@ always @(posedge aclk or negedge aresetn) begin
         fifo_wr_gray_sys_ff2 <= {FIFO_PTR_WIDTH{1'b0}};
         fifo_rd_bin <= {FIFO_PTR_WIDTH{1'b0}};
         fifo_rd_gray <= {FIFO_PTR_WIDTH{1'b0}};
-        direct_ext_pair_data_q <= 64'b0;
         direct_ext_pair_valid_q <= 1'b0;
         fast_stream_error_sys_ff1 <= 1'b0;
         fast_stream_error_sys_ff2 <= 1'b0;
@@ -421,8 +433,7 @@ always @(posedge aclk or negedge aresetn) begin
         fast_stream_error_sys_ff1 <= fast_stream_error;
         fast_stream_error_sys_ff2 <= fast_stream_error_sys_ff1;
 
-        if ((!direct_ext_pair_valid_q || direct_ext_pair_ready) && !fifo_empty_sys) begin
-            direct_ext_pair_data_q <= fast_pair_fifo[fifo_rd_bin[FIFO_ADDR_WIDTH-1:0]];
+        if (fifo_rd_en) begin
             fifo_rd_bin <= fifo_rd_bin_next;
             fifo_rd_gray <= fifo_rd_gray_next;
             direct_ext_pair_valid_q <= 1'b1;
@@ -430,6 +441,36 @@ always @(posedge aclk or negedge aresetn) begin
             direct_ext_pair_valid_q <= 1'b0;
         end
     end
+end
+
+endmodule
+
+// Canonical simple dual-port, dual-clock RAM template.  A 512x64 instance maps
+// to one RAMB36 on 7-series devices.  The memory array has no reset so Vivado
+// can infer the block RAM; FIFO control and validity are reset separately.
+module matmul_async_pair_fifo_ram #(
+    parameter ADDR_WIDTH = 9
+) (
+    input                   wr_clk,
+    input                   wr_en,
+    input  [ADDR_WIDTH-1:0] wr_addr,
+    input  [63:0]           wr_data,
+    input                   rd_clk,
+    input                   rd_en,
+    input  [ADDR_WIDTH-1:0] rd_addr,
+    output reg [63:0]       rd_data
+);
+
+(* ram_style = "block" *) reg [63:0] mem [0:(1 << ADDR_WIDTH)-1];
+
+always @(posedge wr_clk) begin
+    if (wr_en)
+        mem[wr_addr] <= wr_data;
+end
+
+always @(posedge rd_clk) begin
+    if (rd_en)
+        rd_data <= mem[rd_addr];
 end
 
 endmodule
