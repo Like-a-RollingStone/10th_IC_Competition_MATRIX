@@ -31,13 +31,9 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --------------------------------------------------------------------------------
 ------------------------------------------------------------------------------*/
 
-module axi_wrap_ram_sp_external #(
-    parameter FAST_PREFETCH = 1'b1
-) (
+module axi_wrap_ram_sp_external (
     input         aclk,
     input         aresetn,
-    input         fast_clk,
-    input         fast_resetn,
     //ar
     input  [4 :0] axi_arid   ,
     input  [31:0] axi_araddr ,
@@ -103,14 +99,7 @@ module axi_wrap_ram_sp_external #(
     input         direct_ext_oe_n,
     input         direct_ext_we_n,
     input  [31:0] direct_ext_wdata,
-    output [31:0] direct_ext_rdata,
-
-    // Full-cycle fast reader. Two 32-bit SRAM reads are transferred to the
-    // system clock domain as one ordered 64-bit pair.
-    input         fast_read_enable,
-    output [63:0] fast_pair_data,
-    output        fast_pair_valid,
-    input         fast_pair_ready
+    output [31:0] direct_ext_rdata
 );
 
 
@@ -264,100 +253,6 @@ wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
 wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
 wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
 
-localparam FAST_FIFO_ADDR_BITS = 4;
-reg [63:0] fast_pair_mem [0:(1 << FAST_FIFO_ADDR_BITS)-1];
-reg [FAST_FIFO_ADDR_BITS:0] fast_wbin;
-reg [FAST_FIFO_ADDR_BITS:0] fast_wgray;
-reg [FAST_FIFO_ADDR_BITS:0] fast_rbin;
-reg [FAST_FIFO_ADDR_BITS:0] fast_rgray;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_ADDR_BITS:0] fast_rgray_sync1;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_ADDR_BITS:0] fast_rgray_sync2;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_ADDR_BITS:0] fast_wgray_sync1;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_ADDR_BITS:0] fast_wgray_sync2;
-(* ASYNC_REG = "TRUE" *) reg fast_enable_sync1;
-(* ASYNC_REG = "TRUE" *) reg fast_enable_sync2;
-reg [19:0] fast_ext_addr;
-reg [31:0] fast_pair_low;
-reg        fast_pair_half;
-reg        fast_reader_primed;
-
-wire [FAST_FIFO_ADDR_BITS:0] fast_wbin_next = fast_wbin + 1'b1;
-wire [FAST_FIFO_ADDR_BITS:0] fast_wgray_next =
-    (fast_wbin_next >> 1) ^ fast_wbin_next;
-wire fast_fifo_full = fast_wgray_next
-    == {~fast_rgray_sync2[FAST_FIFO_ADDR_BITS:FAST_FIFO_ADDR_BITS-1],
-        fast_rgray_sync2[FAST_FIFO_ADDR_BITS-2:0]};
-wire fast_fifo_empty = fast_rgray == fast_wgray_sync2;
-wire fast_reader_active = FAST_PREFETCH && fast_enable_sync2;
-
-assign fast_pair_data = fast_pair_mem[fast_rbin[FAST_FIFO_ADDR_BITS-1:0]];
-assign fast_pair_valid = FAST_PREFETCH && !fast_fifo_empty;
-
-always @(posedge fast_clk or negedge fast_resetn) begin
-    if (!fast_resetn) begin
-        fast_enable_sync1 <= 1'b0;
-        fast_enable_sync2 <= 1'b0;
-        fast_rgray_sync1 <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_rgray_sync2 <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_wbin <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_wgray <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_ext_addr <= 20'b0;
-        fast_pair_low <= 32'b0;
-        fast_pair_half <= 1'b0;
-        fast_reader_primed <= 1'b0;
-    end else begin
-        fast_enable_sync1 <= fast_read_enable;
-        fast_enable_sync2 <= fast_enable_sync1;
-        fast_rgray_sync1 <= fast_rgray;
-        fast_rgray_sync2 <= fast_rgray_sync1;
-
-        if (!fast_enable_sync2) begin
-            fast_wbin <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-            fast_wgray <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-            fast_ext_addr <= 20'b0;
-            fast_pair_low <= 32'b0;
-            fast_pair_half <= 1'b0;
-            fast_reader_primed <= 1'b0;
-        end else if (!fast_reader_primed) begin
-            // Hold word zero for one complete fast clock before sampling it.
-            fast_ext_addr <= 20'b0;
-            fast_reader_primed <= 1'b1;
-        end else if (!fast_pair_half) begin
-            if (!fast_fifo_full) begin
-                fast_pair_low <= ext_ram_data;
-                fast_ext_addr <= fast_ext_addr + 20'd1;
-                fast_pair_half <= 1'b1;
-            end
-        end else begin
-            fast_pair_mem[fast_wbin[FAST_FIFO_ADDR_BITS-1:0]]
-                <= {ext_ram_data, fast_pair_low};
-            fast_wbin <= fast_wbin_next;
-            fast_wgray <= fast_wgray_next;
-            fast_ext_addr <= fast_ext_addr + 20'd1;
-            fast_pair_half <= 1'b0;
-        end
-    end
-end
-
-always @(posedge aclk or negedge aresetn) begin
-    if (!aresetn) begin
-        fast_wgray_sync1 <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_wgray_sync2 <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_rbin <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        fast_rgray <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-    end else begin
-        fast_wgray_sync1 <= fast_wgray;
-        fast_wgray_sync2 <= fast_wgray_sync1;
-        if (!fast_read_enable) begin
-            fast_rbin <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-            fast_rgray <= {(FAST_FIFO_ADDR_BITS+1){1'b0}};
-        end else if (fast_pair_valid && fast_pair_ready) begin
-            fast_rbin <= fast_rbin + 1'b1;
-            fast_rgray <= ((fast_rbin + 1'b1) >> 1) ^ (fast_rbin + 1'b1);
-        end
-    end
-end
-
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
 assign base_ram_ce_n = ~(soc_sram_cs & (~choose_sram));
@@ -365,14 +260,10 @@ assign base_ram_oe_n = soc_sram_we | choose_sram;
 assign base_ram_we_n = ~(soc_sram_we & (~choose_sram));
 assign base_ram_data = ((~choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz;
 
-assign ext_ram_addr = fast_reader_active ? fast_ext_addr
-                    : (direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2]);
-assign ext_ram_be_n = fast_reader_active ? 4'b0000
-                    : (direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111));
-assign ext_ram_ce_n = fast_reader_active ? 1'b0
-                    : (direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1));
-assign ext_ram_oe_n = fast_reader_active ? 1'b0
-                    : (direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1));
+assign ext_ram_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
+assign ext_ram_be_n = direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111);
+assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1);
+assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
 `ifdef MODELSIM_BUILD
 assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
 `elsif VERILATOR
@@ -392,8 +283,7 @@ ODDR #(
     .S(1'b0)
 );
 `endif
-assign ext_ram_data = fast_reader_active ? 32'hzzzzzzzz
-                    : direct_ext_active
+assign ext_ram_data = direct_ext_active
                     ? (direct_ext_oe_n ? direct_ext_wdata : 32'hzzzzzzzz)
                     : (((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz);
 
