@@ -82,6 +82,9 @@ wire cpu_resetn;
 wire sys_clk;
 wire sys_resetn;
 wire pll_locked;
+wire matmul_fast_clk;
+wire matmul_fast_resetn;
+wire matmul_fast_locked;
 
 generate if(SIMULATION) begin: sim_clk
     //simulation clk.
@@ -125,6 +128,54 @@ else begin: pll_clk
 
 end
 endgenerate
+
+generate if(SIMULATION) begin: sim_matmul_fast_clock
+    reg matmul_fast_clk_sim;
+    initial begin
+        matmul_fast_clk_sim = 1'b0;
+    end
+    always #8 matmul_fast_clk_sim = ~matmul_fast_clk_sim;
+    assign matmul_fast_clk = matmul_fast_clk_sim;
+    assign matmul_fast_locked = 1'b1;
+end else begin: matmul_fast_clock
+    wire matmul_clkfb;
+    wire matmul_clkfb_buf;
+    wire matmul_clk_unbuffered;
+
+    MMCME2_BASE #(
+        .BANDWIDTH("OPTIMIZED"),
+        .CLKFBOUT_MULT_F(20.0),
+        .CLKIN1_PERIOD(20.0),
+        .CLKOUT0_DIVIDE_F(16.0),
+        .DIVCLK_DIVIDE(1),
+        .STARTUP_WAIT("FALSE")
+    ) u_matmul_mmcm (
+        .CLKIN1(clk),
+        .CLKFBIN(matmul_clkfb_buf),
+        .RST(reset),
+        .PWRDWN(1'b0),
+        .CLKFBOUT(matmul_clkfb),
+        .CLKOUT0(matmul_clk_unbuffered),
+        .LOCKED(matmul_fast_locked)
+    );
+
+    BUFG u_matmul_clkfb_bufg (
+        .I(matmul_clkfb),
+        .O(matmul_clkfb_buf)
+    );
+
+    BUFG u_matmul_clk_bufg (
+        .I(matmul_clk_unbuffered),
+        .O(matmul_fast_clk)
+    );
+end
+endgenerate
+
+rst_sync u_rst_matmul_fast (
+    .clk(matmul_fast_clk),
+    .rst_n_in(matmul_fast_locked & ~reset),
+    .rst_n_out(matmul_fast_resetn)
+);
 
 //debug signals
 wire [31:0] debug_wb_pc;
@@ -369,6 +420,13 @@ wire        matmul_direct_ext_oe_n;
 wire        matmul_direct_ext_we_n;
 wire [31:0] matmul_direct_ext_wdata;
 wire [31:0] matmul_direct_ext_rdata;
+wire        matmul_direct_fast_enable;
+wire [31:0] matmul_direct_fast_pair_count;
+wire [63:0] matmul_direct_fast_pair_data;
+wire        matmul_direct_fast_pair_valid;
+wire        matmul_direct_fast_pair_ready;
+wire        matmul_direct_fast_done;
+wire        matmul_direct_fast_error;
 
 assign dma_m_wid        = 4'b0;
 
@@ -916,6 +974,13 @@ matmul_axi_slave u_matmul_axi_slave (
     .direct_ext_we_n   (matmul_direct_ext_we_n),
     .direct_ext_wdata  (matmul_direct_ext_wdata),
     .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .direct_fast_enable (matmul_direct_fast_enable),
+    .direct_fast_pair_count (matmul_direct_fast_pair_count),
+    .direct_fast_pair_data (matmul_direct_fast_pair_data),
+    .direct_fast_pair_valid (matmul_direct_fast_pair_valid),
+    .direct_fast_pair_ready (matmul_direct_fast_pair_ready),
+    .direct_fast_done (matmul_direct_fast_done),
+    .direct_fast_error (matmul_direct_fast_error),
     .marker_uart_active (matmul_marker_uart_active),
     .marker_uart_tx     (matmul_marker_uart_tx)
 );
@@ -1549,9 +1614,18 @@ axi_wrap_ram_sp_external u_axi_ram (
     .ext_ram_addr       (ext_ram_addr),
     .ext_ram_be_n       (ext_ram_be_n),
     .ext_ram_ce_n       (ext_ram_ce_n),
-    .ext_ram_oe_n       (ext_ram_oe_n),
-    .ext_ram_we_n       (ext_ram_we_n),
-    .direct_ext_active  (matmul_direct_ext_active),
+     .ext_ram_oe_n       (ext_ram_oe_n),
+     .ext_ram_we_n       (ext_ram_we_n),
+     .direct_fast_clk     (matmul_fast_clk),
+     .direct_fast_resetn  (matmul_fast_resetn),
+     .direct_fast_enable  (matmul_direct_fast_enable),
+     .direct_fast_pair_count (matmul_direct_fast_pair_count),
+     .direct_fast_pair_data (matmul_direct_fast_pair_data),
+     .direct_fast_pair_valid (matmul_direct_fast_pair_valid),
+     .direct_fast_pair_ready (matmul_direct_fast_pair_ready),
+     .direct_fast_done    (matmul_direct_fast_done),
+     .direct_fast_error   (matmul_direct_fast_error),
+     .direct_ext_active  (matmul_direct_ext_active),
     .direct_ext_addr    (matmul_direct_ext_addr),
     .direct_ext_be_n    (matmul_direct_ext_be_n),
     .direct_ext_ce_n    (matmul_direct_ext_ce_n),
