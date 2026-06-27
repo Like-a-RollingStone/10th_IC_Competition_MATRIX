@@ -82,17 +82,30 @@ wire cpu_resetn;
 wire sys_clk;
 wire sys_resetn;
 wire pll_locked;
+wire fast_clk;
+wire fast_resetn;
+wire fast_pll_locked;
+wire fast_clk_mmcm;
+wire fast_clk_fb;
+wire fast_clk_fb_buf;
+
+localparam MATMUL_FAST_PREFETCH = 1'b1;
 
 generate if(SIMULATION) begin: sim_clk
     //simulation clk.
     reg clk_sim;
+    reg fast_clk_sim;
     initial begin
         clk_sim = 1'b0;
+        fast_clk_sim = 1'b0;
     end
     always #15 clk_sim = ~clk_sim;
+    always #7.5 fast_clk_sim = ~fast_clk_sim;
 
     assign cpu_clk = clk_sim;
     assign sys_clk = clk;
+    assign fast_clk = fast_clk_sim;
+    assign fast_pll_locked = 1'b1;
     rst_sync u_rst_sys(
         .clk(sys_clk),
         .rst_n_in(~reset),
@@ -102,6 +115,11 @@ generate if(SIMULATION) begin: sim_clk
         .clk(cpu_clk),
         .rst_n_in(sys_resetn),
         .rst_n_out(cpu_resetn)
+    );
+    rst_sync u_rst_fast(
+        .clk(fast_clk),
+        .rst_n_in(~reset),
+        .rst_n_out(fast_resetn)
     );
 end
 else begin: pll_clk
@@ -122,8 +140,61 @@ else begin: pll_clk
         .rst_n_in(sys_resetn),
         .rst_n_out(cpu_resetn)
     );
+
+    MMCME2_BASE #(
+        .BANDWIDTH("OPTIMIZED"),
+        .CLKFBOUT_MULT_F(16.0),
+        .CLKIN1_PERIOD(20.0),
+        .CLKOUT0_DIVIDE_F(12.0),
+        .DIVCLK_DIVIDE(1),
+        .STARTUP_WAIT("FALSE")
+    ) u_matmul_fast_mmcm (
+        .CLKIN1(clk),
+        .CLKFBIN(fast_clk_fb_buf),
+        .RST(reset),
+        .PWRDWN(1'b0),
+        .CLKFBOUT(fast_clk_fb),
+        .CLKOUT0(fast_clk_mmcm),
+        .LOCKED(fast_pll_locked),
+        .CLKOUT0B(),
+        .CLKOUT1(),
+        .CLKOUT1B(),
+        .CLKOUT2(),
+        .CLKOUT2B(),
+        .CLKOUT3(),
+        .CLKOUT3B(),
+        .CLKOUT4(),
+        .CLKOUT5(),
+        .CLKOUT6()
+    );
+    BUFG u_matmul_fast_fb_buf (
+        .I(fast_clk_fb),
+        .O(fast_clk_fb_buf)
+    );
+    BUFG u_matmul_fast_clk_buf (
+        .I(fast_clk_mmcm),
+        .O(fast_clk)
+    );
+    rst_sync u_rst_fast(
+        .clk(fast_clk),
+        .rst_n_in(fast_pll_locked),
+        .rst_n_out(fast_resetn)
+    );
 end
 endgenerate
+
+(* ASYNC_REG = "TRUE" *) reg fast_ready_sys1;
+(* ASYNC_REG = "TRUE" *) reg fast_ready_sys2;
+always @(posedge sys_clk or negedge sys_resetn) begin
+    if (!sys_resetn) begin
+        fast_ready_sys1 <= 1'b0;
+        fast_ready_sys2 <= 1'b0;
+    end else begin
+        fast_ready_sys1 <= fast_resetn;
+        fast_ready_sys2 <= fast_ready_sys1;
+    end
+end
+wire matmul_resetn = sys_resetn && (!MATMUL_FAST_PREFETCH || fast_ready_sys2);
 
 //debug signals
 wire [31:0] debug_wb_pc;
@@ -368,6 +439,10 @@ wire        matmul_direct_ext_oe_n;
 wire        matmul_direct_ext_we_n;
 wire [31:0] matmul_direct_ext_wdata;
 wire [31:0] matmul_direct_ext_rdata;
+wire        matmul_fast_read_enable;
+wire [63:0] matmul_fast_pair_data;
+wire        matmul_fast_pair_valid;
+wire        matmul_fast_pair_ready;
 
 assign dma_m_wid        = 4'b0;
 
@@ -827,9 +902,11 @@ wire [1 :0] axiOut_7_bresp  ;
 wire        axiOut_7_bvalid ;
 wire        axiOut_7_bready ;
 
-matmul_axi_slave u_matmul_axi_slave (
+matmul_axi_slave #(
+    .FAST_PREFETCH(MATMUL_FAST_PREFETCH)
+) u_matmul_axi_slave (
     .clk     (sys_clk),
-    .resetn  (sys_resetn),
+    .resetn  (matmul_resetn),
 
     .s_arvalid (axiOut_7_arvalid),
     .s_arready (axiOut_7_arready),
@@ -915,6 +992,10 @@ matmul_axi_slave u_matmul_axi_slave (
     .direct_ext_we_n   (matmul_direct_ext_we_n),
     .direct_ext_wdata  (matmul_direct_ext_wdata),
     .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .fast_read_enable  (matmul_fast_read_enable),
+    .fast_pair_data    (matmul_fast_pair_data),
+    .fast_pair_valid   (matmul_fast_pair_valid),
+    .fast_pair_ready   (matmul_fast_pair_ready),
     .marker_uart_active (matmul_marker_uart_active),
     .marker_uart_tx     (matmul_marker_uart_tx)
 );
@@ -1497,9 +1578,13 @@ Axi_CDC u_Axi_CDC (
 );
 
 // SRAM controller instantiation
-axi_wrap_ram_sp_external u_axi_ram (
+axi_wrap_ram_sp_external #(
+    .FAST_PREFETCH(MATMUL_FAST_PREFETCH)
+) u_axi_ram (
     .aclk               (sys_clk),
     .aresetn            (sys_resetn),
+    .fast_clk           (fast_clk),
+    .fast_resetn        (fast_resetn),
     // AXI interface
     .axi_arid           (ram_arid),
     .axi_araddr         (ram_araddr),
@@ -1557,7 +1642,11 @@ axi_wrap_ram_sp_external u_axi_ram (
     .direct_ext_oe_n    (matmul_direct_ext_oe_n),
     .direct_ext_we_n    (matmul_direct_ext_we_n),
     .direct_ext_wdata   (matmul_direct_ext_wdata),
-    .direct_ext_rdata   (matmul_direct_ext_rdata)
+    .direct_ext_rdata   (matmul_direct_ext_rdata),
+    .fast_read_enable   (matmul_fast_read_enable),
+    .fast_pair_data     (matmul_fast_pair_data),
+    .fast_pair_valid    (matmul_fast_pair_valid),
+    .fast_pair_ready    (matmul_fast_pair_ready)
 );
 
 // Dummy wires for UART DMA outputs (not used in stage 1)
