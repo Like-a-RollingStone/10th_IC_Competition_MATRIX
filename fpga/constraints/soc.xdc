@@ -229,15 +229,20 @@ set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
 
 create_generated_clock -name cpu_clk [get_pins pll_clk.u_clk_pll/inst/plle2_adv_inst/CLKOUT0]
 create_generated_clock -name sys_clk [get_pins pll_clk.u_clk_pll/inst/plle2_adv_inst/CLKOUT1]
-create_generated_clock -name matmul_fast_clk \
-    -source [get_pins matmul_fast_clock.u_matmul_fast_mmcm/CLKIN1] \
-    -multiply_by 5 -divide_by 4 \
-    [get_pins matmul_fast_clock.u_matmul_fast_bufg/O]
+
+# The MMCM clock is derived automatically by Vivado.  Bind constraints to the
+# propagated clock on the BUFG output instead of creating a second clock object
+# whose name is not used by the downstream registers.
+set matmul_fast_clk_obj [get_clocks -quiet -of_objects \
+    [get_pins matmul_fast_clock.u_matmul_fast_bufg/O]]
+if {[llength $matmul_fast_clk_obj] != 1} {
+    error "Expected exactly one propagated MATMUL fast clock at u_matmul_fast_bufg/O, got [llength $matmul_fast_clk_obj]"
+}
 
 set_clock_groups -asynchronous \
     -group [get_clocks cpu_clk] \
     -group [get_clocks sys_clk] \
-    -group [get_clocks matmul_fast_clk]
+    -group $matmul_fast_clk_obj
 
 set_input_delay -clock sys_clk -max 3   [get_ports {base_ram_data[*]}]
 set_input_delay -clock sys_clk -min 2   [get_ports {base_ram_data[*]}]
@@ -257,30 +262,30 @@ set_output_delay -clock sys_clk -min -0.3 [get_ports  base_ram_we_n]
 
 set_input_delay -clock sys_clk -max 3   [get_ports {ext_ram_data[*]}]
 set_input_delay -clock sys_clk -min 2   [get_ports {ext_ram_data[*]}]
-set_input_delay -clock matmul_fast_clk -max 3 -add_delay [get_ports {ext_ram_data[*]}]
-set_input_delay -clock matmul_fast_clk -min 2 -add_delay [get_ports {ext_ram_data[*]}]
+set_input_delay -clock $matmul_fast_clk_obj -max 3 -add_delay [get_ports {ext_ram_data[*]}]
+set_input_delay -clock $matmul_fast_clk_obj -min 2 -add_delay [get_ports {ext_ram_data[*]}]
 
 set_output_delay -clock sys_clk -max 0.3  [get_ports {ext_ram_data[*]}]
 set_output_delay -clock sys_clk -min -0.3 [get_ports {ext_ram_data[*]}]
-set_output_delay -clock matmul_fast_clk -max 0.3 -add_delay [get_ports {ext_ram_data[*]}]
-set_output_delay -clock matmul_fast_clk -min -0.3 -add_delay [get_ports {ext_ram_data[*]}]
+set_output_delay -clock $matmul_fast_clk_obj -max 0.3 -add_delay [get_ports {ext_ram_data[*]}]
+set_output_delay -clock $matmul_fast_clk_obj -min -0.3 -add_delay [get_ports {ext_ram_data[*]}]
 set_output_delay -clock sys_clk -max 0.3  [get_ports {ext_ram_addr[*]}]
 set_output_delay -clock sys_clk -min -0.3 [get_ports {ext_ram_addr[*]}]
-set_output_delay -clock matmul_fast_clk -max 0.3 -add_delay [get_ports {ext_ram_addr[*]}]
-set_output_delay -clock matmul_fast_clk -min -0.3 -add_delay [get_ports {ext_ram_addr[*]}]
+set_output_delay -clock $matmul_fast_clk_obj -max 0.3 -add_delay [get_ports {ext_ram_addr[*]}]
+set_output_delay -clock $matmul_fast_clk_obj -min -0.3 -add_delay [get_ports {ext_ram_addr[*]}]
 set_output_delay -clock sys_clk -max 0.3  [get_ports {ext_ram_be_n[*]}]
 set_output_delay -clock sys_clk -min -0.3 [get_ports {ext_ram_be_n[*]}]
-set_output_delay -clock matmul_fast_clk -max 0.3 -add_delay [get_ports {ext_ram_be_n[*]}]
-set_output_delay -clock matmul_fast_clk -min -0.3 -add_delay [get_ports {ext_ram_be_n[*]}]
+set_output_delay -clock $matmul_fast_clk_obj -max 0.3 -add_delay [get_ports {ext_ram_be_n[*]}]
+set_output_delay -clock $matmul_fast_clk_obj -min -0.3 -add_delay [get_ports {ext_ram_be_n[*]}]
 set_output_delay -clock sys_clk -max 0.3  [get_ports  ext_ram_ce_n]
 set_output_delay -clock sys_clk -min -0.3 [get_ports  ext_ram_ce_n]
-set_output_delay -clock matmul_fast_clk -max 0.3 -add_delay [get_ports ext_ram_ce_n]
-set_output_delay -clock matmul_fast_clk -min -0.3 -add_delay [get_ports ext_ram_ce_n]
+set_output_delay -clock $matmul_fast_clk_obj -max 0.3 -add_delay [get_ports ext_ram_ce_n]
+set_output_delay -clock $matmul_fast_clk_obj -min -0.3 -add_delay [get_ports ext_ram_ce_n]
 set_output_delay -clock sys_clk -max 0.3  [get_ports  ext_ram_oe_n]
 set_output_delay -clock sys_clk -min -0.3 [get_ports  ext_ram_oe_n]
-set_output_delay -clock matmul_fast_clk -max 0.3 -add_delay [get_ports ext_ram_oe_n]
-set_output_delay -clock matmul_fast_clk -min -0.3 -add_delay [get_ports ext_ram_oe_n]
+set_output_delay -clock $matmul_fast_clk_obj -max 0.3 -add_delay [get_ports ext_ram_oe_n]
+set_output_delay -clock $matmul_fast_clk_obj -min -0.3 -add_delay [get_ports ext_ram_oe_n]
 set_output_delay -clock sys_clk -max 0.3  [get_ports  ext_ram_we_n]
 set_output_delay -clock sys_clk -min -0.3 [get_ports  ext_ram_we_n]
-set_output_delay -clock matmul_fast_clk -max 0.3 -add_delay [get_ports ext_ram_we_n]
-set_output_delay -clock matmul_fast_clk -min -0.3 -add_delay [get_ports ext_ram_we_n]
+set_output_delay -clock $matmul_fast_clk_obj -max 0.3 -add_delay [get_ports ext_ram_we_n]
+set_output_delay -clock $matmul_fast_clk_obj -min -0.3 -add_delay [get_ports ext_ram_we_n]
