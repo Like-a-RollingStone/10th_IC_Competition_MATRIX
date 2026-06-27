@@ -82,6 +82,9 @@ wire cpu_resetn;
 wire sys_clk;
 wire sys_resetn;
 wire pll_locked;
+wire matmul_fast_clk;
+wire matmul_fast_resetn;
+wire matmul_fast_locked;
 
 generate if(SIMULATION) begin: sim_clk
     //simulation clk.
@@ -123,6 +126,72 @@ else begin: pll_clk
         .rst_n_out(cpu_resetn)
     );
 
+end
+endgenerate
+
+generate if(SIMULATION) begin: sim_matmul_fast_clock
+    reg matmul_fast_clk_sim;
+    initial begin
+        matmul_fast_clk_sim = 1'b0;
+    end
+    always #8 matmul_fast_clk_sim = ~matmul_fast_clk_sim;
+
+    assign matmul_fast_clk = matmul_fast_clk_sim;
+    assign matmul_fast_locked = 1'b1;
+    rst_sync u_rst_matmul_fast(
+        .clk(matmul_fast_clk),
+        .rst_n_in(sys_resetn),
+        .rst_n_out(matmul_fast_resetn)
+    );
+end
+else begin: matmul_fast_clock
+    wire matmul_fast_clk_unbuffered;
+    wire matmul_fast_clk_feedback;
+    wire matmul_fast_clk_feedback_buf;
+
+    MMCME2_BASE #(
+        .BANDWIDTH("OPTIMIZED"),
+        .CLKFBOUT_MULT_F(20.000),
+        .CLKIN1_PERIOD(20.000),
+        .CLKOUT0_DIVIDE_F(16.000),
+        .DIVCLK_DIVIDE(1),
+        .STARTUP_WAIT("FALSE")
+    ) u_matmul_fast_mmcm (
+        .CLKOUT0(matmul_fast_clk_unbuffered),
+        .CLKOUT0B(),
+        .CLKOUT1(),
+        .CLKOUT1B(),
+        .CLKOUT2(),
+        .CLKOUT2B(),
+        .CLKOUT3(),
+        .CLKOUT3B(),
+        .CLKOUT4(),
+        .CLKOUT5(),
+        .CLKOUT6(),
+        .CLKFBOUT(matmul_fast_clk_feedback),
+        .CLKFBOUTB(),
+        .LOCKED(matmul_fast_locked),
+        .CLKIN1(sys_clk),
+        .PWRDWN(1'b0),
+        .RST(~sys_resetn),
+        .CLKFBIN(matmul_fast_clk_feedback_buf)
+    );
+
+    BUFG u_matmul_fast_feedback_buf (
+        .I(matmul_fast_clk_feedback),
+        .O(matmul_fast_clk_feedback_buf)
+    );
+
+    BUFG u_matmul_fast_bufg (
+        .I(matmul_fast_clk_unbuffered),
+        .O(matmul_fast_clk)
+    );
+
+    rst_sync u_rst_matmul_fast(
+        .clk(matmul_fast_clk),
+        .rst_n_in(sys_resetn & matmul_fast_locked),
+        .rst_n_out(matmul_fast_resetn)
+    );
 end
 endgenerate
 
@@ -369,6 +438,11 @@ wire        matmul_direct_ext_oe_n;
 wire        matmul_direct_ext_we_n;
 wire [31:0] matmul_direct_ext_wdata;
 wire [31:0] matmul_direct_ext_rdata;
+wire [18:0] matmul_direct_ext_word_count;
+wire [63:0] matmul_direct_ext_pair_data;
+wire        matmul_direct_ext_pair_valid;
+wire        matmul_direct_ext_pair_ready;
+wire        matmul_direct_ext_stream_error;
 
 assign dma_m_wid        = 4'b0;
 
@@ -916,6 +990,11 @@ matmul_axi_slave u_matmul_axi_slave (
     .direct_ext_we_n   (matmul_direct_ext_we_n),
     .direct_ext_wdata  (matmul_direct_ext_wdata),
     .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .direct_ext_word_count (matmul_direct_ext_word_count),
+    .direct_ext_pair_data  (matmul_direct_ext_pair_data),
+    .direct_ext_pair_valid (matmul_direct_ext_pair_valid),
+    .direct_ext_pair_ready (matmul_direct_ext_pair_ready),
+    .direct_ext_stream_error (matmul_direct_ext_stream_error),
     .marker_uart_active (matmul_marker_uart_active),
     .marker_uart_tx     (matmul_marker_uart_tx)
 );
@@ -1501,6 +1580,8 @@ Axi_CDC u_Axi_CDC (
 axi_wrap_ram_sp_external u_axi_ram (
     .aclk               (sys_clk),
     .aresetn            (sys_resetn),
+    .matmul_fast_clk    (matmul_fast_clk),
+    .matmul_fast_resetn (matmul_fast_resetn),
     // AXI interface
     .axi_arid           (ram_arid),
     .axi_araddr         (ram_araddr),
@@ -1558,7 +1639,12 @@ axi_wrap_ram_sp_external u_axi_ram (
     .direct_ext_oe_n    (matmul_direct_ext_oe_n),
     .direct_ext_we_n    (matmul_direct_ext_we_n),
     .direct_ext_wdata   (matmul_direct_ext_wdata),
-    .direct_ext_rdata   (matmul_direct_ext_rdata)
+    .direct_ext_rdata   (matmul_direct_ext_rdata),
+    .direct_ext_word_count (matmul_direct_ext_word_count),
+    .direct_ext_pair_data  (matmul_direct_ext_pair_data),
+    .direct_ext_pair_valid (matmul_direct_ext_pair_valid),
+    .direct_ext_pair_ready (matmul_direct_ext_pair_ready),
+    .direct_ext_stream_error (matmul_direct_ext_stream_error)
 );
 
 // Dummy wires for UART DMA outputs (not used in stage 1)
