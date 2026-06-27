@@ -91,17 +91,6 @@ module axi_wrap_ram_sp_external (
     output  ext_ram_oe_n,       //ExtRAM读使能，低有效
     output  ext_ram_we_n,      //ExtRAM写使能，低有效
 
-    // Full-cycle fast reader for the matrix accelerator.
-    input         direct_fast_clk,
-    input         direct_fast_resetn,
-    input         direct_fast_enable,
-    input  [31:0] direct_fast_pair_count,
-    output [63:0] direct_fast_pair_data,
-    output        direct_fast_pair_valid,
-    input         direct_fast_pair_ready,
-    output        direct_fast_done,
-    output        direct_fast_error,
-
     // Direct ExtRAM port for the matrix accelerator.
     input         direct_ext_active,
     input  [19:0] direct_ext_addr,
@@ -264,123 +253,6 @@ wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
 wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
 wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
 
-localparam FAST_FIFO_ADDR_WIDTH = 6;
-localparam FAST_FIFO_PTR_WIDTH = FAST_FIFO_ADDR_WIDTH + 1;
-
-(* ram_style = "block" *) reg [63:0] fast_fifo_mem [0:(1 << FAST_FIFO_ADDR_WIDTH)-1];
-reg [FAST_FIFO_PTR_WIDTH-1:0] fast_wr_bin;
-reg [FAST_FIFO_PTR_WIDTH-1:0] fast_wr_gray;
-reg [FAST_FIFO_PTR_WIDTH-1:0] fast_rd_bin;
-reg [FAST_FIFO_PTR_WIDTH-1:0] fast_rd_gray;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_PTR_WIDTH-1:0] fast_rd_gray_sync1;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_PTR_WIDTH-1:0] fast_rd_gray_sync2;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_PTR_WIDTH-1:0] fast_wr_gray_sync1;
-(* ASYNC_REG = "TRUE" *) reg [FAST_FIFO_PTR_WIDTH-1:0] fast_wr_gray_sync2;
-
-(* ASYNC_REG = "TRUE" *) reg [1:0] fast_enable_sync;
-(* ASYNC_REG = "TRUE" *) reg [1:0] fast_done_sync;
-(* ASYNC_REG = "TRUE" *) reg [1:0] fast_error_sync;
-reg        fast_session_started;
-reg        fast_session_done;
-reg        fast_session_error;
-reg [19:0] fast_ext_addr;
-reg [31:0] fast_pairs_remaining;
-reg        fast_word_phase;
-reg [31:0] fast_even_word;
-reg [63:0] fast_pair_data_reg;
-reg        fast_pair_valid_reg;
-
-wire [FAST_FIFO_PTR_WIDTH-1:0] fast_wr_bin_next = fast_wr_bin + {{(FAST_FIFO_PTR_WIDTH-1){1'b0}}, 1'b1};
-wire [FAST_FIFO_PTR_WIDTH-1:0] fast_wr_gray_next =
-    (fast_wr_bin_next >> 1) ^ fast_wr_bin_next;
-wire fast_fifo_full =
-    fast_wr_gray_next
-    == {~fast_rd_gray_sync2[FAST_FIFO_PTR_WIDTH-1:FAST_FIFO_PTR_WIDTH-2],
-        fast_rd_gray_sync2[FAST_FIFO_PTR_WIDTH-3:0]};
-wire fast_fifo_empty = (fast_rd_gray == fast_wr_gray_sync2);
-
-assign direct_fast_pair_data = fast_pair_data_reg;
-assign direct_fast_pair_valid = fast_pair_valid_reg;
-assign direct_fast_done = fast_done_sync[1];
-assign direct_fast_error = fast_error_sync[1];
-
-always @(posedge direct_fast_clk) begin
-    if (!direct_fast_resetn) begin
-        fast_enable_sync <= 2'b0;
-        fast_rd_gray_sync1 <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_rd_gray_sync2 <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_wr_bin <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_wr_gray <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_session_started <= 1'b0;
-        fast_session_done <= 1'b0;
-        fast_session_error <= 1'b0;
-        fast_ext_addr <= 20'b0;
-        fast_pairs_remaining <= 32'b0;
-        fast_word_phase <= 1'b0;
-        fast_even_word <= 32'b0;
-    end else begin
-        fast_enable_sync <= {fast_enable_sync[0], direct_fast_enable};
-        fast_rd_gray_sync1 <= fast_rd_gray;
-        fast_rd_gray_sync2 <= fast_rd_gray_sync1;
-
-        if (fast_enable_sync[1] && !fast_session_started) begin
-            fast_session_started <= 1'b1;
-            fast_session_done <= 1'b0;
-            fast_session_error <= (direct_fast_pair_count == 32'b0);
-            fast_ext_addr <= direct_ext_addr;
-            fast_pairs_remaining <= direct_fast_pair_count;
-            fast_word_phase <= 1'b0;
-        end else if (fast_session_started && !fast_session_done && !fast_session_error) begin
-            if (!fast_word_phase) begin
-                fast_even_word <= ext_ram_data;
-                fast_ext_addr <= fast_ext_addr + 20'd1;
-                fast_word_phase <= 1'b1;
-            end else if (!fast_fifo_full) begin
-                fast_fifo_mem[fast_wr_bin[FAST_FIFO_ADDR_WIDTH-1:0]]
-                    <= {ext_ram_data, fast_even_word};
-                fast_wr_bin <= fast_wr_bin_next;
-                fast_wr_gray <= fast_wr_gray_next;
-                fast_word_phase <= 1'b0;
-                if (fast_pairs_remaining == 32'd1) begin
-                    fast_pairs_remaining <= 32'b0;
-                    fast_session_done <= 1'b1;
-                end else begin
-                    fast_pairs_remaining <= fast_pairs_remaining - 32'd1;
-                    fast_ext_addr <= fast_ext_addr + 20'd1;
-                end
-            end
-        end
-    end
-end
-
-always @(posedge aclk) begin
-    if (!aresetn) begin
-        fast_wr_gray_sync1 <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_wr_gray_sync2 <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_rd_bin <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_rd_gray <= {FAST_FIFO_PTR_WIDTH{1'b0}};
-        fast_pair_data_reg <= 64'b0;
-        fast_pair_valid_reg <= 1'b0;
-        fast_done_sync <= 2'b0;
-        fast_error_sync <= 2'b0;
-    end else begin
-        fast_wr_gray_sync1 <= fast_wr_gray;
-        fast_wr_gray_sync2 <= fast_wr_gray_sync1;
-        fast_done_sync <= {fast_done_sync[0], fast_session_done};
-        fast_error_sync <= {fast_error_sync[0], fast_session_error};
-
-        if ((!fast_pair_valid_reg || direct_fast_pair_ready) && !fast_fifo_empty) begin
-            fast_pair_data_reg <= fast_fifo_mem[fast_rd_bin[FAST_FIFO_ADDR_WIDTH-1:0]];
-            fast_rd_bin <= fast_rd_bin + {{(FAST_FIFO_PTR_WIDTH-1){1'b0}}, 1'b1};
-            fast_rd_gray <= ((fast_rd_bin + {{(FAST_FIFO_PTR_WIDTH-1){1'b0}}, 1'b1}) >> 1)
-                          ^ (fast_rd_bin + {{(FAST_FIFO_PTR_WIDTH-1){1'b0}}, 1'b1});
-            fast_pair_valid_reg <= 1'b1;
-        end else if (fast_pair_valid_reg && direct_fast_pair_ready) begin
-            fast_pair_valid_reg <= 1'b0;
-        end
-    end
-end
-
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
 assign base_ram_ce_n = ~(soc_sram_cs & (~choose_sram));
@@ -388,9 +260,7 @@ assign base_ram_oe_n = soc_sram_we | choose_sram;
 assign base_ram_we_n = ~(soc_sram_we & (~choose_sram));
 assign base_ram_data = ((~choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz;
 
-assign ext_ram_addr = direct_fast_enable ? fast_ext_addr
-                    : direct_ext_active ? direct_ext_addr
-                    : soc_sram_addr[21:2];
+assign ext_ram_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
 assign ext_ram_be_n = direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111);
 assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1);
 assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
