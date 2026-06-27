@@ -288,6 +288,16 @@ assign ext_ram_data = direct_ext_active
                     : (((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz);
 
 assign soc_sram_rdata = choose_sram ? ext_ram_data : base_ram_data;
-assign direct_ext_rdata = ext_ram_data;
+
+// Capture direct-read data beside the ExtRAM I/O.  The accelerator advances
+// addresses on aclk edges, so this register removes the marginal port-to-many
+// register hold path while retaining one word per clock after one warm-up beat.
+(* IOB = "TRUE" *) reg [31:0] direct_ext_rdata_q;
+always @(posedge aclk) begin
+    if (direct_ext_active && !direct_ext_ce_n && !direct_ext_oe_n) begin
+        direct_ext_rdata_q <= ext_ram_data;
+    end
+end
+assign direct_ext_rdata = direct_ext_rdata_q;
 
 endmodule
