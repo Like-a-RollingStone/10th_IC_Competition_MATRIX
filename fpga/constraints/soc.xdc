@@ -230,18 +230,22 @@ set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
 create_generated_clock -name cpu_clk [get_pins pll_clk.u_clk_pll/inst/plle2_adv_inst/CLKOUT0]
 create_generated_clock -name sys_clk [get_pins pll_clk.u_clk_pll/inst/plle2_adv_inst/CLKOUT1]
 
-# Define the fast clock at the MMCM output where Vivado creates its derived
-# clock.  Defining it at the downstream BUFG output leaves the MMCM's automatic
-# clock as a separate object on the actual sequential endpoints.
-create_generated_clock -name matmul_fast_clk \
-    -source [get_pins matmul_fast_clock.u_matmul_fast_mmcm/CLKIN1] \
-    -multiply_by 5 -divide_by 4 \
-    [get_pins matmul_fast_clock.u_matmul_fast_mmcm/CLKOUT0]
+# Establish a new timing root after the fast-clock BUFG.  This deliberately
+# prevents the MMCM's auto-derived clock from propagating to the downstream
+# registers, which communicate with sys_clk only through the asynchronous FIFO.
+create_clock -name matmul_fast_clk \
+    -period 16.000 -waveform {0.000 8.000} \
+    [get_pins matmul_fast_clock.u_matmul_fast_bufg/O]
 
 set matmul_fast_clk_obj [get_clocks -quiet matmul_fast_clk]
 if {[llength $matmul_fast_clk_obj] != 1} {
     error "Expected exactly one MATMUL fast clock, got [llength $matmul_fast_clk_obj]"
 }
+set matmul_fast_clk_period [get_property PERIOD $matmul_fast_clk_obj]
+if {[expr {abs($matmul_fast_clk_period - 16.000)}] > 0.001} {
+    error "Expected MATMUL fast clock period 16.000 ns, got $matmul_fast_clk_period ns"
+}
+puts "CICIEC_XDC_FAST_PRIMARY_V1 clock=$matmul_fast_clk_obj period=$matmul_fast_clk_period"
 
 set_clock_groups -asynchronous \
     -group [get_clocks cpu_clk] \
