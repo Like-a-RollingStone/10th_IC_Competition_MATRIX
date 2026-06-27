@@ -117,6 +117,7 @@ localparam DMA_COMPUTE       = 3'd3;
 localparam DMA_WRITE_AW      = 3'd4;
 localparam DMA_WRITE_W       = 3'd5;
 localparam DMA_WRITE_B       = 3'd6;
+localparam DMA_READ_WARMUP   = 3'd7;
 localparam AUTO_SRC_BASE     = 32'h1c40_0000;
 localparam AUTO_GROUP_COUNT  = 32'd5000;
 localparam UART_BAUD_DIV     = 16'd434;
@@ -1331,6 +1332,14 @@ always @(posedge clk or negedge resetn) begin
                     direct_write_strobe <= 1'b0;
                     direct_ext_be_n <= 4'b0000;
                     direct_ext_addr <= dma_src_addr[21:2];
+                    dma_state <= DMA_READ_WARMUP;
+                end
+
+                DMA_READ_WARMUP: begin
+                    // direct_ext_rdata is registered in the ExtRAM wrapper.
+                    // Launch word 1 while word 0 enters that register; the
+                    // following READ_R cycle consumes word 0.
+                    direct_ext_addr <= dma_src_addr[21:2] + 20'd1;
                     dma_state <= DMA_READ_R;
                 end
 
@@ -1381,7 +1390,10 @@ always @(posedge clk or negedge resetn) begin
                         end
                     end else begin
                         dma_read_word <= dma_read_word + 6'd1;
-                        direct_ext_addr <= dma_src_addr[21:2] + 20'd1;
+                        // The wrapper register already captures the address
+                        // currently on the pins, so keep the pin address one
+                        // word ahead of the value consumed in this cycle.
+                        direct_ext_addr <= dma_src_addr[21:2] + 20'd2;
                         dma_state <= DMA_READ_R;
                     end
                 end
