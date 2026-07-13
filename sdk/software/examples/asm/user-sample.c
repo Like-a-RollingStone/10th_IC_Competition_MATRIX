@@ -22,7 +22,7 @@
 #define MATMUL_CRC32_OFFSET       0x15cu
 
 #ifndef MATMUL_GROUP_NUM
-#define MATMUL_GROUP_NUM 50
+#define MATMUL_GROUP_NUM 5000
 #endif
 
 #if MATMUL_GROUP_NUM <= 0
@@ -279,6 +279,35 @@ static void fail(U32 code, U32 detail)
 
 int main(void)
 {
+    U32 src_base = EXTRAM_CACHED_BASE_ADDR;
+    U32 dst_base = src_base + GROUP_COUNT * AB_WORDS_PER_GROUP * sizeof(U32);
+    U32 status;
+    U32 crc;
+    char done_lines[36];
+
+    /* The evaluator starts timing after this marker.  All work below is
+     * explicitly initiated by this CPU program through the AXI slave. */
+    uart_puts_blocking("MATMUL_START\n");
+
+    MATMUL_SRC_BASE_DIRECT = src_base;
+    MATMUL_DST_BASE_DIRECT = dst_base;
+    MATMUL_GROUP_COUNT_DIRECT = GROUP_COUNT;
+    MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
+
+    while (1) {
+        status = MATMUL_STATUS_DIRECT;
+        if (status & MATMUL_STATUS_ERROR) {
+            fail(1u, status);
+        }
+        if (status & MATMUL_STATUS_DONE) {
+            break;
+        }
+    }
+
+    crc = MATMUL_CRC32_DIRECT;
+    make_crc32_done_lines(done_lines, crc);
+    uart_puts_blocking(done_lines);
+
     while (1) {
     }
 }
