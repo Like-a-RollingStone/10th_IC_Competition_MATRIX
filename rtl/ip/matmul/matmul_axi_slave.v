@@ -587,6 +587,19 @@ task start_dma_batch;
     end
 endtask
 
+task continue_or_stop_axi_read;
+    begin
+        if (dma_read_group == (group_count_reg - 32'd1)) begin
+            dma_state <= DMA_COMPUTE;
+        end else begin
+            dma_read_group <= dma_read_group + 32'd1;
+            dma_read_slot <= ~dma_read_slot;
+            dma_read_word <= 6'b0;
+            dma_state <= DMA_READ_AR;
+        end
+    end
+endtask
+
 always @(*) begin
     reg_rdata = 32'b0;
 
@@ -969,6 +982,17 @@ always @(posedge clk or negedge resetn) begin
                             compute_done_pending <= 1'b1;
                             compute_done_slot <= compute_slot;
                             compute_done_group <= dma_group;
+                            if (!crc_stream_active && !crc_pending_valid) begin
+                                crc_stream_active <= 1'b1;
+                                crc_stream_slot <= compute_slot;
+                                crc_stream_group <= dma_group;
+                                crc_stream_word <= 6'b0;
+                                crc_pending_valid <= 1'b0;
+                            end else begin
+                                crc_pending_valid <= 1'b1;
+                                crc_pending_slot <= compute_slot;
+                                crc_pending_group <= dma_group;
+                            end
                         end else begin
                             calc_row <= 2'd2;
                             calc_col <= 2'd0;
@@ -1133,15 +1157,33 @@ always @(posedge clk or negedge resetn) begin
                                     dma_active <= 1'b0;
                                     dma_state <= DMA_IDLE;
                                 end else begin
-                                    start_compute8(dma_read_slot, compute_slot, dma_read_group);
-                                    if (pending_write_valid) begin
-                                        dma_write_group <= pending_write_group;
-                                        dma_write_slot <= pending_write_slot;
-                                        pending_write_valid <= 1'b0;
-                                        dma_write_word <= 6'b0;
-                                        dma_state <= DMA_WRITE_AW;
-                                    end else begin
+                                    if ((dma_read_group == 32'b0)
+                                        && !compute_active && !compute_done_pending) begin
+                                        input_ready_valid <= 1'b0;
+                                        start_compute8(dma_read_slot, 1'b0, dma_read_group);
+                                        continue_or_stop_axi_read;
+                                    end else if (compute_batch_finishing
+                                        && (dma_read_group == (dma_group + 32'd1))
+                                        && !crc_pending_valid) begin
+                                        compute_done_pending <= 1'b0;
+                                        input_ready_valid <= 1'b0;
+                                        start_compute8(dma_read_slot, ~compute_slot, dma_read_group);
+                                        continue_or_stop_axi_read;
+                                    end else if (compute_done_pending
+                                        && (dma_read_group == (compute_done_group + 32'd1))
+                                        && !crc_pending_valid) begin
+                                        compute_done_pending <= 1'b0;
+                                        input_ready_valid <= 1'b0;
+                                        start_compute8(dma_read_slot, ~compute_done_slot, dma_read_group);
+                                        continue_or_stop_axi_read;
+                                    end else if (compute_active || compute_done_pending || crc_stream_active) begin
+                                        input_ready_valid <= 1'b1;
+                                        input_ready_slot <= dma_read_slot;
+                                        input_ready_group <= dma_read_group;
                                         dma_state <= DMA_COMPUTE;
+                                    end else begin
+                                        start_compute8(dma_read_slot, 1'b0, dma_read_group);
+                                        continue_or_stop_axi_read;
                                     end
                                 end
                             end else if (dma_read_word == 6'd31) begin
@@ -1159,90 +1201,48 @@ always @(posedge clk or negedge resetn) begin
                 DMA_COMPUTE: begin
                     if (compute_done_pending) begin
                         if (compute_done_group == (group_count_reg - 32'd1)) begin
-                            compute_done_pending <= 1'b0;
-                            dma_write_group <= compute_done_group;
-                            dma_write_slot <= compute_done_slot;
-                            dma_write_word <= 6'b0;
-                            dma_state <= DMA_WRITE_AW;
+                            dma_state <= DMA_COMPUTE;
+                        end else if (input_ready_valid
+                            && (input_ready_group == (compute_done_group + 32'd1))) begin
+                            if (!crc_pending_valid) begin
+                                compute_done_pending <= 1'b0;
+                                input_ready_valid <= 1'b0;
+                                start_compute8(input_ready_slot, ~compute_done_slot, input_ready_group);
+                            end
+                            dma_state <= DMA_COMPUTE;
                         end else begin
-                            pending_write_valid <= 1'b1;
-                            pending_write_group <= compute_done_group;
-                            pending_write_slot <= compute_done_slot;
-                            compute_done_pending <= 1'b0;
-                            compute_slot <= ~compute_done_slot;
                             dma_read_group <= compute_done_group + 32'd1;
+                            dma_read_slot <= ~compute_input_slot;
                             dma_read_word <= 6'b0;
-                            dma_write_word <= 6'b0;
                             dma_state <= DMA_READ_AR;
                         end
+                    end else if (can_prefetch_next) begin
+                        dma_read_group <= dma_group + 32'd1;
+                        dma_read_slot <= ~compute_input_slot;
+                        dma_read_word <= 6'b0;
+                        dma_state <= DMA_READ_AR;
                     end
                 end
 
                 DMA_WRITE_AW: begin
-                    m_awaddr <= dma_dst_addr;
-                    m_awvalid <= 1'b1;
-                    if (m_awvalid && m_awready) begin
-                        m_awvalid <= 1'b0;
-                        m_wdata <= dma_current_write_data;
-                        m_wlast <= (dma_write_word == 6'd47);
-                        m_wvalid <= 1'b1;
-                        dma_state <= DMA_WRITE_W;
-                    end
+                    m_awvalid <= 1'b0;
+                    m_wvalid <= 1'b0;
+                    m_wlast <= 1'b0;
+                    dma_state <= DMA_COMPUTE;
                 end
 
                 DMA_WRITE_W: begin
-                    if (m_wvalid && m_wready) begin
-                        crc_acc <= crc_next_word;
-                        if (dma_write_word == 6'd47) begin
-                            m_wvalid <= 1'b0;
-                            m_wlast <= 1'b0;
-                            dma_state <= DMA_WRITE_B;
-                        end else begin
-                            dma_write_word <= dma_write_word + 6'd1;
-                            m_wdata <= dma_write_slot ? c_regs_alt[dma_write_word + 6'd1]
-                                                       : c_regs[dma_write_word + 6'd1];
-                            m_wlast <= (dma_write_word == 6'd46);
-                        end
-                    end
+                    m_awvalid <= 1'b0;
+                    m_wvalid <= 1'b0;
+                    m_wlast <= 1'b0;
+                    dma_state <= DMA_COMPUTE;
                 end
 
                 DMA_WRITE_B: begin
-                    if (m_bvalid) begin
-                        if (m_bresp != 2'b00) begin
-                            error <= 1'b1;
-                            busy <= 1'b0;
-                            dma_active <= 1'b0;
-                            dma_state <= DMA_IDLE;
-                        end else begin
-                            if (dma_write_last_group) begin
-                                crc_result_reg <= crc_acc ^ 32'hffff_ffff;
-                                busy <= 1'b0;
-                                done <= 1'b1;
-                                dma_active <= 1'b0;
-                                dma_state <= DMA_IDLE;
-                            end else if (compute_done_pending) begin
-                                if (compute_done_group == (group_count_reg - 32'd1)) begin
-                                    compute_done_pending <= 1'b0;
-                                    dma_write_group <= compute_done_group;
-                                    dma_write_slot <= compute_done_slot;
-                                    dma_write_word <= 6'b0;
-                                    dma_state <= DMA_WRITE_AW;
-                                end else begin
-                                    pending_write_valid <= 1'b1;
-                                    pending_write_group <= compute_done_group;
-                                    pending_write_slot <= compute_done_slot;
-                                    compute_done_pending <= 1'b0;
-                                    compute_slot <= ~compute_done_slot;
-                                    dma_read_group <= compute_done_group + 32'd1;
-                                    dma_read_word <= 6'b0;
-                                    dma_write_word <= 6'b0;
-                                    dma_state <= DMA_READ_AR;
-                                end
-                            end else begin
-                                dma_state <= DMA_COMPUTE;
-                            end
-                        end
-                    end
+                    m_awvalid <= 1'b0;
+                    m_wvalid <= 1'b0;
+                    m_wlast <= 1'b0;
+                    dma_state <= DMA_COMPUTE;
                 end
 
                 default: begin
