@@ -332,15 +332,21 @@ wire        crc_stream_last_group = (crc_stream_group == (group_count_reg - 32'd
 wire        can_prefetch_next = compute_active && ((dma_group + 32'd1) < group_count_reg) && (!input_ready_valid);
 wire        compute_batch_finishing = dma_active && compute_active && mul_finish
                                     && (calc_k == 2'd3) && (calc_row == 2'd2);
+wire [31:0] dma_read_groups_remaining = group_count_reg - dma_read_group;
+wire [5:0]  dma_read_groups_to_4k = 6'd32 - {1'b0, dma_read_group[4:0]};
+wire [2:0]  dma_read_burst_groups = (dma_read_groups_remaining < 32'd7)
+                                        ? dma_read_groups_remaining[2:0]
+                                        : ((dma_read_groups_to_4k < 6'd7)
+                                            ? dma_read_groups_to_4k[2:0] : 3'd7);
 
 assign m_arid    = 4'b0;
-assign m_arlen   = 8'd31;
+assign m_arlen   = {dma_read_burst_groups, 5'b0} - 8'd1;
 assign m_arsize  = 3'b010;
 assign m_arburst = 2'b01;
 assign m_arlock  = 1'b0;
 assign m_arcache = 4'b0011;
 assign m_arprot  = 3'b000;
-assign m_rready  = 1'b1;
+assign m_rready  = dma_active && (dma_state == DMA_READ_R) && !input_ready_valid;
 assign m_awid    = 4'b0;
 assign m_awlen   = 8'd47;
 assign m_awsize  = 3'b010;
@@ -587,7 +593,8 @@ task start_dma_batch;
     end
 endtask
 
-task continue_or_stop_axi_read;
+task advance_after_axi_group;
+    input burst_last;
     begin
         if (dma_read_group == (group_count_reg - 32'd1)) begin
             dma_state <= DMA_COMPUTE;
@@ -595,7 +602,7 @@ task continue_or_stop_axi_read;
             dma_read_group <= dma_read_group + 32'd1;
             dma_read_slot <= ~dma_read_slot;
             dma_read_word <= 6'b0;
-            dma_state <= DMA_READ_AR;
+            dma_state <= burst_last ? DMA_READ_AR : DMA_READ_R;
         end
     end
 endtask
@@ -1117,6 +1124,15 @@ always @(posedge clk or negedge resetn) begin
         end
 
         if (dma_active) begin
+            if ((dma_state == DMA_READ_R) && input_ready_valid
+                && compute_done_pending
+                && (input_ready_group == (compute_done_group + 32'd1))
+                && !crc_pending_valid) begin
+                compute_done_pending <= 1'b0;
+                input_ready_valid <= 1'b0;
+                start_compute8(input_ready_slot, ~compute_done_slot, input_ready_group);
+            end
+
             case (dma_state)
                 DMA_READ_AR: begin
                     m_araddr <= dma_src_addr;
@@ -1129,7 +1145,7 @@ always @(posedge clk or negedge resetn) begin
                 end
 
                 DMA_READ_R: begin
-                    if (m_rvalid) begin
+                    if (m_rvalid && m_rready) begin
                         if (m_rresp != 2'b00) begin
                             error <= 1'b1;
                             busy <= 1'b0;
@@ -1150,47 +1166,40 @@ always @(posedge clk or negedge resetn) begin
                                 end
                             end
 
-                            if (m_rlast) begin
-                                if (dma_read_word != 6'd31) begin
-                                    error <= 1'b1;
-                                    busy <= 1'b0;
-                                    dma_active <= 1'b0;
-                                    dma_state <= DMA_IDLE;
-                                end else begin
-                                    if ((dma_read_group == 32'b0)
-                                        && !compute_active && !compute_done_pending) begin
-                                        input_ready_valid <= 1'b0;
-                                        start_compute8(dma_read_slot, 1'b0, dma_read_group);
-                                        continue_or_stop_axi_read;
-                                    end else if (compute_batch_finishing
-                                        && (dma_read_group == (dma_group + 32'd1))
-                                        && !crc_pending_valid) begin
-                                        compute_done_pending <= 1'b0;
-                                        input_ready_valid <= 1'b0;
-                                        start_compute8(dma_read_slot, ~compute_slot, dma_read_group);
-                                        continue_or_stop_axi_read;
-                                    end else if (compute_done_pending
-                                        && (dma_read_group == (compute_done_group + 32'd1))
-                                        && !crc_pending_valid) begin
-                                        compute_done_pending <= 1'b0;
-                                        input_ready_valid <= 1'b0;
-                                        start_compute8(dma_read_slot, ~compute_done_slot, dma_read_group);
-                                        continue_or_stop_axi_read;
-                                    end else if (compute_active || compute_done_pending || crc_stream_active) begin
-                                        input_ready_valid <= 1'b1;
-                                        input_ready_slot <= dma_read_slot;
-                                        input_ready_group <= dma_read_group;
-                                        dma_state <= DMA_COMPUTE;
-                                    end else begin
-                                        start_compute8(dma_read_slot, 1'b0, dma_read_group);
-                                        continue_or_stop_axi_read;
-                                    end
-                                end
-                            end else if (dma_read_word == 6'd31) begin
+                            if (m_rlast && (dma_read_word != 6'd31)) begin
                                 error <= 1'b1;
                                 busy <= 1'b0;
                                 dma_active <= 1'b0;
                                 dma_state <= DMA_IDLE;
+                            end else if (dma_read_word == 6'd31) begin
+                                if ((dma_read_group == 32'b0)
+                                    && !compute_active && !compute_done_pending) begin
+                                    input_ready_valid <= 1'b0;
+                                    start_compute8(dma_read_slot, 1'b0, dma_read_group);
+                                    advance_after_axi_group(m_rlast);
+                                end else if (compute_batch_finishing
+                                    && (dma_read_group == (dma_group + 32'd1))
+                                    && !crc_pending_valid) begin
+                                    compute_done_pending <= 1'b0;
+                                    input_ready_valid <= 1'b0;
+                                    start_compute8(dma_read_slot, ~compute_slot, dma_read_group);
+                                    advance_after_axi_group(m_rlast);
+                                end else if (compute_done_pending
+                                    && (dma_read_group == (compute_done_group + 32'd1))
+                                    && !crc_pending_valid) begin
+                                    compute_done_pending <= 1'b0;
+                                    input_ready_valid <= 1'b0;
+                                    start_compute8(dma_read_slot, ~compute_done_slot, dma_read_group);
+                                    advance_after_axi_group(m_rlast);
+                                end else if (compute_active || compute_done_pending || crc_stream_active) begin
+                                    input_ready_valid <= 1'b1;
+                                    input_ready_slot <= dma_read_slot;
+                                    input_ready_group <= dma_read_group;
+                                    advance_after_axi_group(m_rlast);
+                                end else begin
+                                    start_compute8(dma_read_slot, 1'b0, dma_read_group);
+                                    advance_after_axi_group(m_rlast);
+                                end
                             end else begin
                                 dma_read_word <= dma_read_word + 6'd1;
                             end

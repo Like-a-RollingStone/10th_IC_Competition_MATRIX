@@ -171,29 +171,43 @@ static void uart_put_hex8(U32 value)
     }
 }
 
-static void make_crc32_done_suffix(char line[22], U32 value)
+static void make_crc32_done_lines(char line[35], U32 value)
 {
     int i;
 
+    line[0] = 'M';
+    line[1] = 'A';
+    line[2] = 'T';
+    line[3] = 'M';
+    line[4] = 'U';
+    line[5] = 'L';
+    line[6] = '_';
+    line[7] = 'C';
+    line[8] = 'R';
+    line[9] = 'C';
+    line[10] = '3';
+    line[11] = '2';
+    line[12] = '=';
+
     for (i = 0; i < 8; ++i) {
         U32 digit = (value >> (28u - (U32)i * 4u)) & 0xfu;
-        line[i] = (char)(digit < 10u ? ('0' + digit) : ('a' + (digit - 10u)));
+        line[13 + i] = (char)(digit < 10u ? ('0' + digit) : ('a' + (digit - 10u)));
     }
 
-    line[8] = '\n';
-    line[9] = 'M';
-    line[10] = 'A';
-    line[11] = 'T';
-    line[12] = 'M';
-    line[13] = 'U';
-    line[14] = 'L';
-    line[15] = '_';
-    line[16] = 'D';
-    line[17] = 'O';
-    line[18] = 'N';
-    line[19] = 'E';
-    line[20] = '\n';
-    line[21] = '\0';
+    line[21] = '\n';
+    line[22] = 'M';
+    line[23] = 'A';
+    line[24] = 'T';
+    line[25] = 'M';
+    line[26] = 'U';
+    line[27] = 'L';
+    line[28] = '_';
+    line[29] = 'D';
+    line[30] = 'O';
+    line[31] = 'N';
+    line[32] = 'E';
+    line[33] = '\n';
+    line[34] = '\0';
 }
 
 static void uart_put_u32(U32 value)
@@ -269,21 +283,16 @@ int main(void)
     U32 dst_base = src_base + GROUP_COUNT * AB_WORDS_PER_GROUP * sizeof(U32);
     U32 status;
     U32 crc;
-    char done_suffix[22];
+    char done_lines[35];
 
-    /* The evaluator starts timing after this marker.  All work below is
-     * explicitly initiated by this CPU program through the AXI slave. */
+    /* Emit the required marker before the CPU starts any accelerator read or
+     * matrix work. All work below is initiated through the AXI slave. */
     uart_puts_blocking("MATMUL_START\n");
 
     MATMUL_SRC_BASE_DIRECT = src_base;
     MATMUL_DST_BASE_DIRECT = dst_base;
     MATMUL_GROUP_COUNT_DIRECT = GROUP_COUNT;
     MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
-
-    /* Transmit the invariant portion while the accelerator is working.  The
-     * CRC digits and DONE marker are not emitted until the computed CRC is
-     * available, preserving the evaluator's line protocol. */
-    uart_puts_blocking("MATMUL_CRC32=");
 
     while (1) {
         status = MATMUL_STATUS_DIRECT;
@@ -296,8 +305,8 @@ int main(void)
     }
 
     crc = MATMUL_CRC32_DIRECT;
-    make_crc32_done_suffix(done_suffix, crc);
-    uart_puts_blocking(done_suffix);
+    make_crc32_done_lines(done_lines, crc);
+    uart_puts_blocking(done_lines);
 
     while (1) {
     }
