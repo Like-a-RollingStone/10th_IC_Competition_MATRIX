@@ -2,6 +2,10 @@
 #include "uart_print.h"
 #include "handler.h"
 
+/* Software-only timing experiment: keep the CPU cache disabled so startup
+ * does not spend time sweeping every I/D cache index after MATMUL_START. */
+#define MATMUL_KEEP_CACHE_DISABLED 1
+
 	.section .init
 	.globl _start
 	.type _start,@function
@@ -38,11 +42,10 @@ _start:
     csrxchg	$r12,$r13,0x0
 
     /* CPU MMIO routine: initialize UART, emit MATMUL_START, then configure
-     * and start the AXI-attached accelerator.  The full cache invalidation
-     * below remains intact, but now overlaps accelerator execution. */
+     * and start the AXI-attached accelerator. */
     bl matmul_early_start
 
-#if has_cache==1
+#if has_cache==1 && MATMUL_KEEP_CACHE_DISABLED==0
     # invalidate old instructions in icache and old data in dcache by index
     li.w t0,0x0
     li.w t2, cache_index_depth
@@ -97,8 +100,8 @@ _start:
 	bltu t0, t1, 1b
 2:
 
-    /* enable cache */
-#if has_cache==1
+    /* Enable cache only in the normal cached-startup configuration. */
+#if has_cache==1 && MATMUL_KEEP_CACHE_DISABLED==0
     li.w    $r12,0x19
     csrwr  $r12,0x180
 #endif
