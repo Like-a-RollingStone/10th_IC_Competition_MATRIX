@@ -279,20 +279,14 @@ static void fail(U32 code, U32 detail)
 
 int main(void)
 {
-    U32 src_base = EXTRAM_CACHED_BASE_ADDR;
-    U32 dst_base = src_base + GROUP_COUNT * AB_WORDS_PER_GROUP * sizeof(U32);
     U32 status;
     U32 crc;
     char done_lines[35];
 
-    /* Emit the required marker before the CPU starts any accelerator read or
-     * matrix work. All work below is initiated through the AXI slave. */
-    uart_puts_blocking("MATMUL_START\n");
-
-    MATMUL_SRC_BASE_DIRECT = src_base;
-    MATMUL_DST_BASE_DIRECT = dst_base;
-    MATMUL_GROUP_COUNT_DIRECT = GROUP_COUNT;
-    MATMUL_CTRL_DIRECT = MATMUL_CTRL_START_MASK;
+    /* The CPU startup assembly has already initialized UART, emitted the
+     * required start marker, and configured/started the accelerator through
+     * its AXI slave registers.  Cache invalidation then overlaps the AXI DMA
+     * work; main only waits for the CPU-initiated operation to finish. */
 
     while (1) {
         status = MATMUL_STATUS_DIRECT;
