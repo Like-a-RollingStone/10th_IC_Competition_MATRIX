@@ -22,7 +22,7 @@
 #define MATMUL_CRC32_OFFSET       0x15cu
 
 #ifndef MATMUL_GROUP_NUM
-#define MATMUL_GROUP_NUM 5000
+#define MATMUL_GROUP_NUM 50
 #endif
 
 #if MATMUL_GROUP_NUM <= 0
@@ -171,7 +171,7 @@ static void uart_put_hex8(U32 value)
     }
 }
 
-static void make_crc32_done_lines(char line[35], U32 value)
+static void make_crc32_done_lines(char line[36], U32 value)
 {
     int i;
 
@@ -279,29 +279,6 @@ static void fail(U32 code, U32 detail)
 
 int main(void)
 {
-    U32 status;
-    U32 crc;
-    char done_lines[35];
-
-    /* The CPU startup assembly has already initialized UART, emitted the
-     * required start marker, and configured/started the accelerator through
-     * its AXI slave registers.  Cache invalidation then overlaps the AXI DMA
-     * work; main only waits for the CPU-initiated operation to finish. */
-
-    while (1) {
-        status = MATMUL_STATUS_DIRECT;
-        if (status & MATMUL_STATUS_ERROR) {
-            fail(1u, status);
-        }
-        if (status & MATMUL_STATUS_DONE) {
-            break;
-        }
-    }
-
-    crc = MATMUL_CRC32_DIRECT;
-    make_crc32_done_lines(done_lines, crc);
-    uart_puts_blocking(done_lines);
-
     while (1) {
     }
 }

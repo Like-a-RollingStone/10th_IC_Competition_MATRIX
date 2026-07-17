@@ -89,7 +89,17 @@ module axi_wrap_ram_sp_external (
     output [ 3:0] ext_ram_be_n,  //ExtRAM字节使能，低有效。如果不使用字节使能，请保持为0
     output  ext_ram_ce_n,       //ExtRAM片选，低有效
     output  ext_ram_oe_n,       //ExtRAM读使能，低有效
-    output  ext_ram_we_n       //ExtRAM写使能，低有效
+    output  ext_ram_we_n,      //ExtRAM写使能，低有效
+
+    // Direct ExtRAM port for the matrix accelerator.
+    input         direct_ext_active,
+    input  [19:0] direct_ext_addr,
+    input  [ 3:0] direct_ext_be_n,
+    input         direct_ext_ce_n,
+    input         direct_ext_oe_n,
+    input         direct_ext_we_n,
+    input  [31:0] direct_ext_wdata,
+    output [31:0] direct_ext_rdata
 );
 
 
@@ -240,8 +250,8 @@ axi2sram_sp_external #(
 wire choose_sram = soc_sram_addr[22];//1:ExtRAM 0:BaseRAM
 wire [3:0] be_out = soc_sram_we ? soc_sram_be : 4'b1111;
 wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
-wire ext_ram_we_pos = normal_ext_we_n;
-wire ext_ram_we_neg = 1'b1;
+wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
+wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
 
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
@@ -250,14 +260,14 @@ assign base_ram_oe_n = soc_sram_we | choose_sram;
 assign base_ram_we_n = ~(soc_sram_we & (~choose_sram));
 assign base_ram_data = ((~choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz;
 
-assign ext_ram_addr = soc_sram_addr[21:2];
-assign ext_ram_be_n = choose_sram ? ~be_out : 4'b1111;
-assign ext_ram_ce_n = choose_sram ? ~soc_sram_cs : 1'b1;
-assign ext_ram_oe_n = choose_sram ? soc_sram_we : 1'b1;
+assign ext_ram_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
+assign ext_ram_be_n = direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111);
+assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1);
+assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
 `ifdef MODELSIM_BUILD
-assign ext_ram_we_n = normal_ext_we_n;
+assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
 `elsif VERILATOR
-assign ext_ram_we_n = normal_ext_we_n;
+assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
 `else
 ODDR #(
     .DDR_CLK_EDGE("OPPOSITE_EDGE"),
@@ -273,8 +283,21 @@ ODDR #(
     .S(1'b0)
 );
 `endif
-assign ext_ram_data = ((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz;
+assign ext_ram_data = direct_ext_active
+                    ? (direct_ext_oe_n ? direct_ext_wdata : 32'hzzzzzzzz)
+                    : (((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz);
 
 assign soc_sram_rdata = choose_sram ? ext_ram_data : base_ram_data;
+
+// Capture direct-read data beside the ExtRAM I/O.  The accelerator advances
+// addresses on aclk edges, so this register removes the marginal port-to-many
+// register hold path while retaining one word per clock after one warm-up beat.
+(* IOB = "TRUE" *) reg [31:0] direct_ext_rdata_q;
+always @(posedge aclk) begin
+    if (direct_ext_active && !direct_ext_ce_n && !direct_ext_oe_n) begin
+        direct_ext_rdata_q <= ext_ram_data;
+    end
+end
+assign direct_ext_rdata = direct_ext_rdata_q;
 
 endmodule

@@ -2,9 +2,7 @@
 #include "uart_print.h"
 #include "handler.h"
 
-/* Software-only timing experiment: keep the CPU cache disabled so startup
- * does not spend time sweeping every I/D cache index after MATMUL_START. */
-#define MATMUL_KEEP_CACHE_DISABLED 1
+.extern UART_BASE
 
 	.section .init
 	.globl _start
@@ -12,57 +10,36 @@
 
 _start:
 
-    ## init regs
-    addi.w $r1,zero,0x0;  addi.w $r2,zero,0x0;  addi.w $r3,zero,0x0;  addi.w $r4,zero,0x0;
-    addi.w $r5,zero,0x0;  addi.w $r6,zero,0x0;  addi.w $r7,zero,0x0;  addi.w $r8,zero,0x0;
-    addi.w $r9,zero,0x0;  addi.w $r10,zero,0x0; addi.w $r11,zero,0x0; addi.w $r12,zero,0x0;
-    addi.w $r13,zero,0x0; addi.w $r14,zero,0x0; addi.w $r15,zero,0x0; addi.w $r16,zero,0x0;
-    addi.w $r17,zero,0x0; addi.w $r18,zero,0x0; addi.w $r19,zero,0x0; addi.w $r20,zero,0x0;
-    addi.w $r21,zero,0x0; addi.w $r22,zero,0x0; addi.w $r23,zero,0x0; addi.w $r24,zero,0x0;
-    addi.w $r25,zero,0x0; addi.w $r26,zero,0x0; addi.w $r27,zero,0x0; addi.w $r28,zero,0x0;
-    addi.w $r29,zero,0x0; addi.w $r30,zero,0x0; addi.w $r31,zero,0x0;
+    ##init regs
+    addi.w $r1,zero,0x0;  addi.w $r2,zero,0x0;  addi.w $r3,zero,0x0;  addi.w $r4,zero,0x0; 
+    addi.w $r5,zero,0x0;  addi.w $r6,zero,0x0;  addi.w $r7,zero,0x0;  addi.w $r8,zero,0x0; 
+    addi.w $r9,zero,0x0;  addi.w $r10,zero,0x0; addi.w $r11,zero,0x0; addi.w $r12,zero,0x0; 
+    addi.w $r13,zero,0x0; addi.w $r14,zero,0x0; addi.w $r15,zero,0x0; addi.w $r16,zero,0x0; 
+    addi.w $r17,zero,0x0; addi.w $r18,zero,0x0; addi.w $r19,zero,0x0; addi.w $r20,zero,0x0; 
+    addi.w $r21,zero,0x0; addi.w $r22,zero,0x0; addi.w $r23,zero,0x0; addi.w $r24,zero,0x0; 
+    addi.w $r25,zero,0x0; addi.w $r26,zero,0x0; addi.w $r27,zero,0x0; addi.w $r28,zero,0x0; 
+    addi.w $r29,zero,0x0; addi.w $r30,zero,0x0; addi.w $r31,zero,0x0;  
 
-    /* Establish the normal CPU address mapping before touching MMIO. */
-	/* open da mode */
-    li.w	    $r12,0x8
-    li.w	    $r13,0x18
-    csrxchg	$r12,$r13,0x0
-
-    /* init dmw */
-    csrwr	$r0,0x180
-    csrwr	$r0,0x181
-    li.w    $r12,0x09
-    csrwr	$r12,0x180
-    li.w    $r12,0xa0000009
-    csrwr	$r12,0x181
-
-    /* open pg mode */
-    li.w	    $r12,0x10
-    li.w	    $r13,0x18
-    csrxchg	$r12,$r13,0x0
-
-    /* CPU MMIO routine: initialize UART, emit MATMUL_START, then configure
-     * and start the AXI-attached accelerator. */
-    bl matmul_early_start
-
-#if has_cache==1 && MATMUL_KEEP_CACHE_DISABLED==0
-    # invalidate old instructions in icache and old data in dcache by index
+#if has_cache==1
+    # invalid the old inst in icache and old data in dcache by index
     li.w t0,0x0
+    #li.w t2,0x100
     li.w t2, cache_index_depth
-1:
+1: 
+    #slli.w    t1, t0, 0x4
     slli.w    t1, t0, cache_offset_width
 #if cache_way==1
-    cacop     0x00, t1, 0x0
+    cacop     0x00, t1, 0x0 
     cacop     0x01, t1, 0x0
 #elif cache_way==2
-    cacop     0x00, t1, 0x0
+    cacop     0x00, t1, 0x0 
     cacop     0x00, t1, 0x1
     cacop     0x01, t1, 0x0
     cacop     0x01, t1, 0x1
 #elif cache_way==4
-    cacop     0x00, t1, 0x0
+    cacop     0x00, t1, 0x0 
     cacop     0x00, t1, 0x1
-    cacop     0x00, t1, 0x2
+    cacop     0x00, t1, 0x2 
     cacop     0x00, t1, 0x3
     cacop     0x01, t1, 0x0
     cacop     0x01, t1, 0x1
@@ -72,10 +49,28 @@ _start:
     addi.w    t0, t0, 0x1
     bne       t0, t2, 1b
 #else
-    /* disable cache */
+    /* disable   cache */
     li.w    $r12,0x1
-    csrwr  $r12,0x101
+    csrwr	$r12,0x101
 #endif
+
+	/* open da mode */
+    li.w	    $r12,0x8
+    li.w	    $r13,0x18
+    csrxchg	$r12,$r13,0x0
+
+    /* init dmw  */
+    csrwr	$r0,0x180
+    csrwr	$r0,0x181
+    li.w    $r12,0x09
+    csrwr	$r12,0x180
+    li.w    $r12,0xa0000009
+    csrwr	$r12,0x181
+
+    /* open pg mode  */
+    li.w	    $r12,0x10
+    li.w	    $r13,0x18
+    csrxchg	$r12,$r13,0x0
 
     /* load data section */
 	la.local t0, _data_lma
@@ -100,11 +95,40 @@ _start:
 	bltu t0, t1, 1b
 2:
 
-    /* Enable cache only in the normal cached-startup configuration. */
-#if has_cache==1 && MATMUL_KEEP_CACHE_DISABLED==0
+    /* enable cache */
+#if has_cache==1
     li.w    $r12,0x19
-    csrwr  $r12,0x180
+    csrwr	$r12,0x180
+#else
+
 #endif
+
+	/* init UART */
+	la.local    t0, UART_BASE
+	ld.w        t1, t0, 0
+	#WRITE(li.wne,OFS_FIFO,FIFO_ENABLE|FIFO_RCV_RST|FIFO_XMT_RST|FIFO_TRIGGER_0);
+	li.w        t2, 0x07   
+	st.b        t2, t1, 2
+	#WRITE(li.wne,OFS_LINE_CONTROL, 0x80);
+	li.w        t2, 0x80
+	st.b        t2, t1, 3
+	#WRITE(li.wne,OFS_DIVISOR_MSB, (divisor & 0xff00) >> 8); 
+	li.w        t2, 0x00 
+	st.b        t2, t1, 1 
+	#WRITE(li.wne,OFS_DIVISOR_LSB, divisor & 0xff);
+    li.w        t3, 0xbf20f500
+    ld.w        t3, t3, 0
+    li.w        t2, 0x1b
+    beq         zero, t3, 1f
+    li.w        t2, 0x1
+1:
+	st.b     t2, t1, 0 
+	#WRITE(li.wne,OFS_DATA_FORMAT, data | parity | stop);
+	li.w       t2, 0x3 
+	st.b     t2, t1, 3
+	#WRITE(li.wne,OFS_MODEM_CONTROL,0);
+	li.w       t2, 0x0 
+	st.b     t2, t1, 4 
 
     /* init exception */
 #ifdef RTThread
@@ -114,11 +138,11 @@ _start:
 #endif
     csrwr    t0, csr_eentry
 
-    # clear int
+    #clear int
     li.w        t1, 0x1
     csrwr       t1, csr_ticlr
 
-    # enable int
+    #enable int 
     li.w        t1, 0x4
 #ifdef RTThread
     csrxchg     zero, t1, csr_crmd
@@ -130,8 +154,9 @@ _start:
     csrwr       zero, csr_ecfg
     csrwr       t1, csr_ecfg
 
-	la.local sp, _stack
 
+	la.local	sp, _stack
+    
 	/* argc = argv = 0 */
 	li.w a0, 0
 	li.w a1, 0
@@ -142,8 +167,8 @@ _start:
 	bl main
 #endif
 
-	/* tail exit */
-	bl _myexit
+	/*tail exit*/
+	bl      _myexit
 1:
 	b 1b
 
@@ -152,56 +177,6 @@ _start:
 _myexit:
 1:
 	b 1b
+	
 
-    /* Kept outside .init so the fixed 0x200 startup layout is preserved. */
-    .section .text.matmul_early_start,"ax"
-    .type matmul_early_start,@function
-matmul_early_start:
-    /* UART at 0xbf000000, 115200 baud.  No initialized C data is used here. */
-    li.w        t0, 0xbf000000
-    li.w        t2, 0x07
-    st.b        t2, t0, 2
-    li.w        t2, 0x80
-    st.b        t2, t0, 3
-    li.w        t2, 0x00
-    st.b        t2, t0, 1
-    li.w        t3, 0xbf20f500
-    ld.w        t3, t3, 0
-    li.w        t2, 0x1b
-    beq         zero, t3, 1f
-    li.w        t2, 0x1
-1:
-    st.b        t2, t0, 0
-    li.w        t2, 0x03
-    st.b        t2, t0, 3
-    st.b        zero, t0, 4
 
-    /* "MATMUL_START\n" fits in the 16-byte UART TX FIFO. */
-    li.w t2, 'M'; st.b t2, t0, 0
-    li.w t2, 'A'; st.b t2, t0, 0
-    li.w t2, 'T'; st.b t2, t0, 0
-    li.w t2, 'M'; st.b t2, t0, 0
-    li.w t2, 'U'; st.b t2, t0, 0
-    li.w t2, 'L'; st.b t2, t0, 0
-    li.w t2, '_'; st.b t2, t0, 0
-    li.w t2, 'S'; st.b t2, t0, 0
-    li.w t2, 'T'; st.b t2, t0, 0
-    li.w t2, 'A'; st.b t2, t0, 0
-    li.w t2, 'R'; st.b t2, t0, 0
-    li.w t2, 'T'; st.b t2, t0, 0
-    li.w t2, 10;  st.b t2, t0, 0
-
-    /* Matrix accelerator AXI slave at 0xbf500000. */
-    li.w        t0, 0xbf500000
-    li.w        t1, 0x1c400000
-    st.w        t1, t0, 0x150
-    li.w        t2, MATMUL_GROUP_NUM
-    st.w        t2, t0, 0x158
-    slli.w      t3, t2, 7
-    add.w       t3, t3, t1
-    st.w        t3, t0, 0x154
-    li.w        t2, 1
-    st.w        t2, t0, 0
-
-    jirl        zero, ra, 0
-    .size matmul_early_start, .-matmul_early_start

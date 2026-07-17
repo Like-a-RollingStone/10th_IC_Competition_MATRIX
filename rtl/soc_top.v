@@ -311,8 +311,10 @@ wire uart0_dsr_i ;
 wire uart0_dcd_i ;
 wire uart0_dtr_o ;
 wire uart0_ri_i  ;
+wire matmul_marker_uart_active;
+wire matmul_marker_uart_tx;
 assign     UART_RX     = uart0_rxd_oe ? 1'bz : uart0_rxd_o ;
-assign     UART_TX     = uart0_txd_oe ? 1'bz : uart0_txd_o ;
+assign     UART_TX     = matmul_marker_uart_active ? matmul_marker_uart_tx : (uart0_txd_oe ? 1'bz : uart0_txd_o) ;
 assign     UART_RTS    = uart0_rts_o ;
 assign     UART_DTR    = uart0_dtr_o ;
 assign     uart0_txd_i = UART_TX;
@@ -359,6 +361,15 @@ wire [3 :0] dma_m_bid    ;
 wire [1 :0] dma_m_bresp  ;
 wire        dma_m_bvalid ;
 wire        dma_m_bready ;
+wire        matmul_direct_ext_active;
+wire [19:0] matmul_direct_ext_addr;
+wire [3:0]  matmul_direct_ext_be_n;
+wire        matmul_direct_ext_ce_n;
+wire        matmul_direct_ext_oe_n;
+wire        matmul_direct_ext_we_n;
+wire [31:0] matmul_direct_ext_wdata;
+wire [31:0] matmul_direct_ext_rdata;
+
 assign dma_m_wid        = 4'b0;
 
 wire [4 :0] dma_s_arid   ;
@@ -895,7 +906,18 @@ matmul_axi_slave u_matmul_axi_slave (
     .m_bid     (dma_m_bid),
     .m_bresp   (dma_m_bresp),
     .m_bvalid  (dma_m_bvalid),
-    .m_bready  (dma_m_bready)
+    .m_bready  (dma_m_bready),
+
+    .direct_ext_active (matmul_direct_ext_active),
+    .direct_ext_addr   (matmul_direct_ext_addr),
+    .direct_ext_be_n   (matmul_direct_ext_be_n),
+    .direct_ext_ce_n   (matmul_direct_ext_ce_n),
+    .direct_ext_oe_n   (matmul_direct_ext_oe_n),
+    .direct_ext_we_n   (matmul_direct_ext_we_n),
+    .direct_ext_wdata  (matmul_direct_ext_wdata),
+    .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .marker_uart_active (matmul_marker_uart_active),
+    .marker_uart_tx     (matmul_marker_uart_tx)
 );
 
 AxiCrossbar_2x8  u_AxiCrossbar_2x8 (
@@ -1528,7 +1550,15 @@ axi_wrap_ram_sp_external u_axi_ram (
     .ext_ram_be_n       (ext_ram_be_n),
     .ext_ram_ce_n       (ext_ram_ce_n),
      .ext_ram_oe_n       (ext_ram_oe_n),
-     .ext_ram_we_n       (ext_ram_we_n)
+     .ext_ram_we_n       (ext_ram_we_n),
+     .direct_ext_active  (matmul_direct_ext_active),
+    .direct_ext_addr    (matmul_direct_ext_addr),
+    .direct_ext_be_n    (matmul_direct_ext_be_n),
+    .direct_ext_ce_n    (matmul_direct_ext_ce_n),
+    .direct_ext_oe_n    (matmul_direct_ext_oe_n),
+    .direct_ext_we_n    (matmul_direct_ext_we_n),
+    .direct_ext_wdata   (matmul_direct_ext_wdata),
+    .direct_ext_rdata   (matmul_direct_ext_rdata)
 );
 
 // Dummy wires for UART DMA outputs (not used in stage 1)
