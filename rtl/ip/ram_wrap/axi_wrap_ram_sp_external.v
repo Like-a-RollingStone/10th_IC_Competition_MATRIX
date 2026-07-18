@@ -34,6 +34,8 @@ THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 module axi_wrap_ram_sp_external (
     input         aclk,
     input         aresetn,
+    input         matmul_fast_clk,
+    input         matmul_fast_resetn,
     //ar
     input  [4 :0] axi_arid   ,
     input  [31:0] axi_araddr ,
@@ -99,7 +101,12 @@ module axi_wrap_ram_sp_external (
     input         direct_ext_oe_n,
     input         direct_ext_we_n,
     input  [31:0] direct_ext_wdata,
-    output [31:0] direct_ext_rdata
+    output [31:0] direct_ext_rdata,
+    input  [18:0] direct_ext_word_count,
+    output [63:0] direct_ext_pair_data,
+    output        direct_ext_pair_valid,
+    input         direct_ext_pair_ready,
+    output        direct_ext_stream_error
 );
 
 
@@ -250,8 +257,52 @@ axi2sram_sp_external #(
 wire choose_sram = soc_sram_addr[22];//1:ExtRAM 0:BaseRAM
 wire [3:0] be_out = soc_sram_we ? soc_sram_be : 4'b1111;
 wire normal_ext_we_n = choose_sram ? ~soc_sram_we : 1'b1;
-wire ext_ram_we_pos = direct_ext_active ? 1'b1 : normal_ext_we_n;
-wire ext_ram_we_neg = direct_ext_active ? direct_ext_we_n : 1'b1;
+
+(* ASYNC_REG = "TRUE" *) reg direct_active_fast_ff1;
+(* ASYNC_REG = "TRUE" *) reg direct_active_fast_ff2;
+reg direct_active_fast_d;
+(* ASYNC_REG = "TRUE" *) reg [19:0] direct_base_fast_ff1;
+(* ASYNC_REG = "TRUE" *) reg [19:0] direct_base_fast_ff2;
+(* ASYNC_REG = "TRUE" *) reg [18:0] direct_count_fast_ff1;
+(* ASYNC_REG = "TRUE" *) reg [18:0] direct_count_fast_ff2;
+
+reg [19:0] fast_ext_addr;
+reg [18:0] fast_words_remaining;
+reg [31:0] fast_pair_low;
+reg        fast_pair_half;
+reg        fast_read_running;
+reg        fast_stream_error;
+
+localparam FIFO_ADDR_WIDTH = 9;
+localparam FIFO_PTR_WIDTH = FIFO_ADDR_WIDTH + 1;
+reg [FIFO_PTR_WIDTH-1:0] fifo_wr_bin;
+reg [FIFO_PTR_WIDTH-1:0] fifo_wr_gray;
+reg [FIFO_PTR_WIDTH-1:0] fifo_rd_bin;
+reg [FIFO_PTR_WIDTH-1:0] fifo_rd_gray;
+(* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_rd_gray_fast_ff1;
+(* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_rd_gray_fast_ff2;
+(* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_wr_gray_sys_ff1;
+(* ASYNC_REG = "TRUE" *) reg [FIFO_PTR_WIDTH-1:0] fifo_wr_gray_sys_ff2;
+wire [63:0] fifo_rd_data;
+reg        direct_ext_pair_valid_q;
+(* ASYNC_REG = "TRUE" *) reg fast_stream_error_sys_ff1;
+(* ASYNC_REG = "TRUE" *) reg fast_stream_error_sys_ff2;
+
+wire [FIFO_PTR_WIDTH-1:0] fifo_wr_bin_next = fifo_wr_bin + {{(FIFO_PTR_WIDTH-1){1'b0}}, 1'b1};
+wire [FIFO_PTR_WIDTH-1:0] fifo_wr_gray_next = (fifo_wr_bin_next >> 1) ^ fifo_wr_bin_next;
+wire [FIFO_PTR_WIDTH-1:0] fifo_rd_bin_next = fifo_rd_bin + {{(FIFO_PTR_WIDTH-1){1'b0}}, 1'b1};
+wire [FIFO_PTR_WIDTH-1:0] fifo_rd_gray_next = (fifo_rd_bin_next >> 1) ^ fifo_rd_bin_next;
+wire fifo_full_fast = (fifo_wr_gray_next
+                     == {~fifo_rd_gray_fast_ff2[FIFO_PTR_WIDTH-1:FIFO_PTR_WIDTH-2],
+                         fifo_rd_gray_fast_ff2[FIFO_PTR_WIDTH-3:0]});
+wire fifo_empty_sys = (fifo_rd_gray == fifo_wr_gray_sys_ff2);
+wire fifo_wr_en = fast_read_running && !fifo_full_fast && fast_pair_half;
+wire fifo_rd_en = (!direct_ext_pair_valid_q || direct_ext_pair_ready)
+                && !fifo_empty_sys;
+wire direct_active_fast = direct_active_fast_ff2;
+wire ext_ram_direct_select = direct_active_fast;
+wire ext_ram_we_pos = ext_ram_direct_select ? 1'b1 : normal_ext_we_n;
+wire ext_ram_we_neg = ext_ram_direct_select ? 1'b1 : 1'b1;
 
 assign base_ram_addr = soc_sram_addr[21:2];
 assign base_ram_be_n = choose_sram ? 4'b1111 : ~be_out;
@@ -260,14 +311,14 @@ assign base_ram_oe_n = soc_sram_we | choose_sram;
 assign base_ram_we_n = ~(soc_sram_we & (~choose_sram));
 assign base_ram_data = ((~choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz;
 
-assign ext_ram_addr = direct_ext_active ? direct_ext_addr : soc_sram_addr[21:2];
-assign ext_ram_be_n = direct_ext_active ? direct_ext_be_n : (choose_sram ? ~be_out : 4'b1111);
-assign ext_ram_ce_n = direct_ext_active ? direct_ext_ce_n : (choose_sram ? ~soc_sram_cs : 1'b1);
-assign ext_ram_oe_n = direct_ext_active ? direct_ext_oe_n : (choose_sram ? soc_sram_we : 1'b1);
+assign ext_ram_addr = ext_ram_direct_select ? fast_ext_addr : soc_sram_addr[21:2];
+assign ext_ram_be_n = ext_ram_direct_select ? 4'b0000 : (choose_sram ? ~be_out : 4'b1111);
+assign ext_ram_ce_n = ext_ram_direct_select ? 1'b0 : (choose_sram ? ~soc_sram_cs : 1'b1);
+assign ext_ram_oe_n = ext_ram_direct_select ? 1'b0 : (choose_sram ? soc_sram_we : 1'b1);
 `ifdef MODELSIM_BUILD
-assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
+assign ext_ram_we_n = ext_ram_direct_select ? 1'b1 : normal_ext_we_n;
 `elsif VERILATOR
-assign ext_ram_we_n = direct_ext_active ? (direct_ext_we_n | aclk) : normal_ext_we_n;
+assign ext_ram_we_n = ext_ram_direct_select ? 1'b1 : normal_ext_we_n;
 `else
 ODDR #(
     .DDR_CLK_EDGE("OPPOSITE_EDGE"),
@@ -283,21 +334,143 @@ ODDR #(
     .S(1'b0)
 );
 `endif
-assign ext_ram_data = direct_ext_active
-                    ? (direct_ext_oe_n ? direct_ext_wdata : 32'hzzzzzzzz)
+assign ext_ram_data = ext_ram_direct_select
+                    ? 32'hzzzzzzzz
                     : (((choose_sram) & soc_sram_cs & soc_sram_we) ? soc_sram_wdata : 32'hzzzzzzzz);
 
 assign soc_sram_rdata = choose_sram ? ext_ram_data : base_ram_data;
 
-// Capture direct-read data beside the ExtRAM I/O.  The accelerator advances
-// addresses on aclk edges, so this register removes the marginal port-to-many
-// register hold path while retaining one word per clock after one warm-up beat.
-(* IOB = "TRUE" *) reg [31:0] direct_ext_rdata_q;
-always @(posedge aclk) begin
-    if (direct_ext_active && !direct_ext_ce_n && !direct_ext_oe_n) begin
-        direct_ext_rdata_q <= ext_ram_data;
+assign direct_ext_rdata = ext_ram_data;
+assign direct_ext_pair_data = fifo_rd_data;
+assign direct_ext_pair_valid = direct_ext_pair_valid_q;
+assign direct_ext_stream_error = fast_stream_error_sys_ff2;
+
+matmul_async_pair_fifo_ram #(
+    .ADDR_WIDTH(FIFO_ADDR_WIDTH)
+) u_fast_pair_fifo_ram (
+    .wr_clk  (matmul_fast_clk),
+    .wr_en   (fifo_wr_en),
+    .wr_addr (fifo_wr_bin[FIFO_ADDR_WIDTH-1:0]),
+    .wr_data ({ext_ram_data, fast_pair_low}),
+    .rd_clk  (aclk),
+    .rd_en   (fifo_rd_en),
+    .rd_addr (fifo_rd_bin[FIFO_ADDR_WIDTH-1:0]),
+    .rd_data (fifo_rd_data)
+);
+
+always @(posedge matmul_fast_clk or negedge matmul_fast_resetn) begin
+    if (!matmul_fast_resetn) begin
+        direct_active_fast_ff1 <= 1'b0;
+        direct_active_fast_ff2 <= 1'b0;
+        direct_active_fast_d <= 1'b0;
+        direct_base_fast_ff1 <= 20'b0;
+        direct_base_fast_ff2 <= 20'b0;
+        direct_count_fast_ff1 <= 19'b0;
+        direct_count_fast_ff2 <= 19'b0;
+        fast_ext_addr <= 20'b0;
+        fast_words_remaining <= 19'b0;
+        fast_pair_low <= 32'b0;
+        fast_pair_half <= 1'b0;
+        fast_read_running <= 1'b0;
+        fast_stream_error <= 1'b0;
+        fifo_wr_bin <= {FIFO_PTR_WIDTH{1'b0}};
+        fifo_wr_gray <= {FIFO_PTR_WIDTH{1'b0}};
+        fifo_rd_gray_fast_ff1 <= {FIFO_PTR_WIDTH{1'b0}};
+        fifo_rd_gray_fast_ff2 <= {FIFO_PTR_WIDTH{1'b0}};
+    end else begin
+        direct_active_fast_ff1 <= direct_ext_active;
+        direct_active_fast_ff2 <= direct_active_fast_ff1;
+        direct_active_fast_d <= direct_active_fast_ff2;
+        direct_base_fast_ff1 <= direct_ext_addr;
+        direct_base_fast_ff2 <= direct_base_fast_ff1;
+        direct_count_fast_ff1 <= direct_ext_word_count;
+        direct_count_fast_ff2 <= direct_count_fast_ff1;
+        fifo_rd_gray_fast_ff1 <= fifo_rd_gray;
+        fifo_rd_gray_fast_ff2 <= fifo_rd_gray_fast_ff1;
+
+        if (direct_active_fast && !direct_active_fast_d) begin
+            fast_ext_addr <= direct_base_fast_ff2;
+            fast_words_remaining <= direct_count_fast_ff2;
+            fast_pair_half <= 1'b0;
+            fast_read_running <= (direct_count_fast_ff2 != 19'b0);
+            fast_stream_error <= direct_count_fast_ff2[0];
+        end else if (!direct_active_fast) begin
+            fast_read_running <= 1'b0;
+            fast_pair_half <= 1'b0;
+        end else if (fast_read_running && !fifo_full_fast) begin
+            if (!fast_pair_half) begin
+                fast_pair_low <= ext_ram_data;
+                fast_pair_half <= 1'b1;
+            end else begin
+                fifo_wr_bin <= fifo_wr_bin_next;
+                fifo_wr_gray <= fifo_wr_gray_next;
+                fast_pair_half <= 1'b0;
+            end
+
+            if (fast_words_remaining == 19'd1) begin
+                fast_words_remaining <= 19'b0;
+                fast_read_running <= 1'b0;
+            end else begin
+                fast_words_remaining <= fast_words_remaining - 19'd1;
+                fast_ext_addr <= fast_ext_addr + 20'd1;
+            end
+        end
     end
 end
-assign direct_ext_rdata = direct_ext_rdata_q;
+
+always @(posedge aclk or negedge aresetn) begin
+    if (!aresetn) begin
+        fifo_wr_gray_sys_ff1 <= {FIFO_PTR_WIDTH{1'b0}};
+        fifo_wr_gray_sys_ff2 <= {FIFO_PTR_WIDTH{1'b0}};
+        fifo_rd_bin <= {FIFO_PTR_WIDTH{1'b0}};
+        fifo_rd_gray <= {FIFO_PTR_WIDTH{1'b0}};
+        direct_ext_pair_valid_q <= 1'b0;
+        fast_stream_error_sys_ff1 <= 1'b0;
+        fast_stream_error_sys_ff2 <= 1'b0;
+    end else begin
+        fifo_wr_gray_sys_ff1 <= fifo_wr_gray;
+        fifo_wr_gray_sys_ff2 <= fifo_wr_gray_sys_ff1;
+        fast_stream_error_sys_ff1 <= fast_stream_error;
+        fast_stream_error_sys_ff2 <= fast_stream_error_sys_ff1;
+
+        if (fifo_rd_en) begin
+            fifo_rd_bin <= fifo_rd_bin_next;
+            fifo_rd_gray <= fifo_rd_gray_next;
+            direct_ext_pair_valid_q <= 1'b1;
+        end else if (direct_ext_pair_valid_q && direct_ext_pair_ready) begin
+            direct_ext_pair_valid_q <= 1'b0;
+        end
+    end
+end
+
+endmodule
+
+// Canonical simple dual-port, dual-clock RAM template.  A 512x64 instance maps
+// to one RAMB36 on 7-series devices.  The memory array has no reset so Vivado
+// can infer the block RAM; FIFO control and validity are reset separately.
+module matmul_async_pair_fifo_ram #(
+    parameter ADDR_WIDTH = 9
+) (
+    input                   wr_clk,
+    input                   wr_en,
+    input  [ADDR_WIDTH-1:0] wr_addr,
+    input  [63:0]           wr_data,
+    input                   rd_clk,
+    input                   rd_en,
+    input  [ADDR_WIDTH-1:0] rd_addr,
+    output reg [63:0]       rd_data
+);
+
+(* ram_style = "block" *) reg [63:0] mem [0:(1 << ADDR_WIDTH)-1];
+
+always @(posedge wr_clk) begin
+    if (wr_en)
+        mem[wr_addr] <= wr_data;
+end
+
+always @(posedge rd_clk) begin
+    if (rd_en)
+        rd_data <= mem[rd_addr];
+end
 
 endmodule

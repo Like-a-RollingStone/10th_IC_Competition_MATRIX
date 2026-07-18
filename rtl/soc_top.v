@@ -82,6 +82,9 @@ wire cpu_resetn;
 wire sys_clk;
 wire sys_resetn;
 wire pll_locked;
+wire matmul_fast_clk;
+wire matmul_fast_resetn;
+wire matmul_fast_locked;
 
 generate if(SIMULATION) begin: sim_clk
     //simulation clk.
@@ -123,6 +126,188 @@ else begin: pll_clk
         .rst_n_out(cpu_resetn)
     );
 
+end
+endgenerate
+
+generate if(SIMULATION) begin: sim_matmul_fast_clock
+    reg matmul_fast_clk_sim;
+    initial begin
+        matmul_fast_clk_sim = 1'b0;
+    end
+    always #8 matmul_fast_clk_sim = ~matmul_fast_clk_sim;
+
+    assign matmul_fast_clk = matmul_fast_clk_sim;
+    assign matmul_fast_locked = 1'b1;
+    rst_sync u_rst_matmul_fast(
+        .clk(matmul_fast_clk),
+        .rst_n_in(sys_resetn),
+        .rst_n_out(matmul_fast_resetn)
+    );
+end
+else begin: matmul_fast_clock
+    wire matmul_fast_clk_unbuffered;
+    wire matmul_fast_clk_feedback;
+    wire matmul_fast_clk_feedback_buf;
+    wire matmul_fast_mmcm_locked;
+    wire [15:0] matmul_fast_drp_do;
+    wire matmul_fast_drp_drdy;
+    reg [6:0] matmul_fast_drp_addr;
+    reg [15:0] matmul_fast_drp_di;
+    reg matmul_fast_drp_den;
+    reg matmul_fast_drp_dwe;
+    reg matmul_fast_mmcm_reset;
+    reg [15:0] matmul_fast_clkout0_reg;
+    reg [3:0] matmul_fast_drp_state;
+    reg matmul_fast_drp_done;
+
+    localparam FAST_DRP_WAIT_INITIAL_LOCK = 4'd0;
+    localparam FAST_DRP_WRITE_POWER       = 4'd1;
+    localparam FAST_DRP_WAIT_POWER        = 4'd2;
+    localparam FAST_DRP_READ_CLKOUT0      = 4'd3;
+    localparam FAST_DRP_WAIT_READ         = 4'd4;
+    localparam FAST_DRP_WRITE_CLKOUT0     = 4'd5;
+    localparam FAST_DRP_WAIT_WRITE        = 4'd6;
+    localparam FAST_DRP_WAIT_FINAL_LOCK   = 4'd7;
+    localparam FAST_DRP_READY             = 4'd8;
+
+    // Vivado times this output as a 50 MHz clock.  After configuration the
+    // DRP changes only CLKOUT0's integer divider from 20 to 16, yielding the
+    // validated 62.5 MHz ExtRAM clock without relying on an overlay XDC.
+    MMCME2_ADV #(
+        .BANDWIDTH("OPTIMIZED"),
+        .CLKFBOUT_MULT_F(20.000),
+        .CLKIN1_PERIOD(20.000),
+        .CLKOUT0_DIVIDE_F(20.000),
+        .DIVCLK_DIVIDE(1),
+        .STARTUP_WAIT("FALSE")
+    ) u_matmul_fast_mmcm (
+        .CLKOUT0(matmul_fast_clk_unbuffered),
+        .CLKOUT0B(),
+        .CLKOUT1(),
+        .CLKOUT1B(),
+        .CLKOUT2(),
+        .CLKOUT2B(),
+        .CLKOUT3(),
+        .CLKOUT3B(),
+        .CLKOUT4(),
+        .CLKOUT5(),
+        .CLKOUT6(),
+        .CLKFBOUT(matmul_fast_clk_feedback),
+        .CLKFBOUTB(),
+        .CLKFBSTOPPED(),
+        .CLKINSTOPPED(),
+        .LOCKED(matmul_fast_mmcm_locked),
+        .CLKIN1(sys_clk),
+        .CLKIN2(1'b0),
+        .CLKINSEL(1'b1),
+        .PWRDWN(1'b0),
+        .RST((~sys_resetn) | matmul_fast_mmcm_reset),
+        .DADDR(matmul_fast_drp_addr),
+        .DCLK(sys_clk),
+        .DEN(matmul_fast_drp_den),
+        .DI(matmul_fast_drp_di),
+        .DO(matmul_fast_drp_do),
+        .DRDY(matmul_fast_drp_drdy),
+        .DWE(matmul_fast_drp_dwe),
+        .PSCLK(1'b0),
+        .PSEN(1'b0),
+        .PSINCDEC(1'b0),
+        .PSDONE(),
+        .CLKFBIN(matmul_fast_clk_feedback_buf)
+    );
+
+    always @(posedge sys_clk or negedge sys_resetn) begin
+        if (!sys_resetn) begin
+            matmul_fast_drp_addr <= 7'b0;
+            matmul_fast_drp_di <= 16'b0;
+            matmul_fast_drp_den <= 1'b0;
+            matmul_fast_drp_dwe <= 1'b0;
+            matmul_fast_mmcm_reset <= 1'b0;
+            matmul_fast_clkout0_reg <= 16'b0;
+            matmul_fast_drp_state <= FAST_DRP_WAIT_INITIAL_LOCK;
+            matmul_fast_drp_done <= 1'b0;
+        end else begin
+            matmul_fast_drp_den <= 1'b0;
+            matmul_fast_drp_dwe <= 1'b0;
+            case (matmul_fast_drp_state)
+                FAST_DRP_WAIT_INITIAL_LOCK: begin
+                    if (matmul_fast_mmcm_locked) begin
+                        matmul_fast_mmcm_reset <= 1'b1;
+                        matmul_fast_drp_state <= FAST_DRP_WRITE_POWER;
+                    end
+                end
+                FAST_DRP_WRITE_POWER: begin
+                    // XAPP888 requires all PowerReg bits enabled while DRP
+                    // reconfiguration is in progress.
+                    matmul_fast_drp_addr <= 7'h28;
+                    matmul_fast_drp_di <= 16'hffff;
+                    matmul_fast_drp_den <= 1'b1;
+                    matmul_fast_drp_dwe <= 1'b1;
+                    matmul_fast_drp_state <= FAST_DRP_WAIT_POWER;
+                end
+                FAST_DRP_WAIT_POWER: begin
+                    if (matmul_fast_drp_drdy) begin
+                        matmul_fast_drp_state <= FAST_DRP_READ_CLKOUT0;
+                    end
+                end
+                FAST_DRP_READ_CLKOUT0: begin
+                    matmul_fast_drp_addr <= 7'h08;
+                    matmul_fast_drp_den <= 1'b1;
+                    matmul_fast_drp_state <= FAST_DRP_WAIT_READ;
+                end
+                FAST_DRP_WAIT_READ: begin
+                    if (matmul_fast_drp_drdy) begin
+                        matmul_fast_clkout0_reg <= matmul_fast_drp_do;
+                        matmul_fast_drp_state <= FAST_DRP_WRITE_CLKOUT0;
+                    end
+                end
+                FAST_DRP_WRITE_CLKOUT0: begin
+                    matmul_fast_drp_addr <= 7'h08;
+                    // Preserve reserved bit 12.  Divide 16 uses equal high
+                    // and low counters of eight VCO cycles: (8<<6)|8.
+                    matmul_fast_drp_di <= (matmul_fast_clkout0_reg & 16'h1000)
+                                        | 16'h0208;
+                    matmul_fast_drp_den <= 1'b1;
+                    matmul_fast_drp_dwe <= 1'b1;
+                    matmul_fast_drp_state <= FAST_DRP_WAIT_WRITE;
+                end
+                FAST_DRP_WAIT_WRITE: begin
+                    if (matmul_fast_drp_drdy) begin
+                        matmul_fast_mmcm_reset <= 1'b0;
+                        matmul_fast_drp_state <= FAST_DRP_WAIT_FINAL_LOCK;
+                    end
+                end
+                FAST_DRP_WAIT_FINAL_LOCK: begin
+                    if (matmul_fast_mmcm_locked) begin
+                        matmul_fast_drp_done <= 1'b1;
+                        matmul_fast_drp_state <= FAST_DRP_READY;
+                    end
+                end
+                default: begin
+                    matmul_fast_drp_state <= FAST_DRP_READY;
+                end
+            endcase
+        end
+    end
+
+    assign matmul_fast_locked = matmul_fast_mmcm_locked
+                              & matmul_fast_drp_done;
+
+    BUFG u_matmul_fast_feedback_buf (
+        .I(matmul_fast_clk_feedback),
+        .O(matmul_fast_clk_feedback_buf)
+    );
+
+    BUFG u_matmul_fast_bufg (
+        .I(matmul_fast_clk_unbuffered),
+        .O(matmul_fast_clk)
+    );
+
+    rst_sync u_rst_matmul_fast(
+        .clk(matmul_fast_clk),
+        .rst_n_in(sys_resetn & matmul_fast_locked),
+        .rst_n_out(matmul_fast_resetn)
+    );
 end
 endgenerate
 
@@ -369,6 +554,11 @@ wire        matmul_direct_ext_oe_n;
 wire        matmul_direct_ext_we_n;
 wire [31:0] matmul_direct_ext_wdata;
 wire [31:0] matmul_direct_ext_rdata;
+wire [18:0] matmul_direct_ext_word_count;
+wire [63:0] matmul_direct_ext_pair_data;
+wire        matmul_direct_ext_pair_valid;
+wire        matmul_direct_ext_pair_ready;
+wire        matmul_direct_ext_stream_error;
 
 assign dma_m_wid        = 4'b0;
 
@@ -916,6 +1106,11 @@ matmul_axi_slave u_matmul_axi_slave (
     .direct_ext_we_n   (matmul_direct_ext_we_n),
     .direct_ext_wdata  (matmul_direct_ext_wdata),
     .direct_ext_rdata  (matmul_direct_ext_rdata),
+    .direct_ext_word_count (matmul_direct_ext_word_count),
+    .direct_ext_pair_data  (matmul_direct_ext_pair_data),
+    .direct_ext_pair_valid (matmul_direct_ext_pair_valid),
+    .direct_ext_pair_ready (matmul_direct_ext_pair_ready),
+    .direct_ext_stream_error (matmul_direct_ext_stream_error),
     .marker_uart_active (matmul_marker_uart_active),
     .marker_uart_tx     (matmul_marker_uart_tx)
 );
@@ -1501,6 +1696,8 @@ Axi_CDC u_Axi_CDC (
 axi_wrap_ram_sp_external u_axi_ram (
     .aclk               (sys_clk),
     .aresetn            (sys_resetn),
+    .matmul_fast_clk    (matmul_fast_clk),
+    .matmul_fast_resetn (matmul_fast_resetn),
     // AXI interface
     .axi_arid           (ram_arid),
     .axi_araddr         (ram_araddr),
@@ -1558,7 +1755,12 @@ axi_wrap_ram_sp_external u_axi_ram (
     .direct_ext_oe_n    (matmul_direct_ext_oe_n),
     .direct_ext_we_n    (matmul_direct_ext_we_n),
     .direct_ext_wdata   (matmul_direct_ext_wdata),
-    .direct_ext_rdata   (matmul_direct_ext_rdata)
+    .direct_ext_rdata   (matmul_direct_ext_rdata),
+    .direct_ext_word_count (matmul_direct_ext_word_count),
+    .direct_ext_pair_data  (matmul_direct_ext_pair_data),
+    .direct_ext_pair_valid (matmul_direct_ext_pair_valid),
+    .direct_ext_pair_ready (matmul_direct_ext_pair_ready),
+    .direct_ext_stream_error (matmul_direct_ext_stream_error)
 );
 
 // Dummy wires for UART DMA outputs (not used in stage 1)
