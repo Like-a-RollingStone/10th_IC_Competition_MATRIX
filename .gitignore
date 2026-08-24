@@ -1,0 +1,32 @@
+# Local build and CI collection directories
+.local_build/
+ci_data/
+
+# Accidental Windows device-name output
+NUL
+
+# FPGA/EDA generated projects and intermediate files
+.Xil/
+*.cache/
+*.runs/
+*.sim/
+*.srcs/
+work/
+
+# Generated reports, logs, waveforms, and build products
+*.log
+*.jou
+*.rpt
+*.vcd
+*.wdb
+*.str
+*.bit
+*.bin
+*.zip
+*.cbor
+
+# Editor and operating-system metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
